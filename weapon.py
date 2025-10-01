@@ -9,6 +9,7 @@ class Weapon():
         self.angulo = 0
         self.imagen = pygame.transform.rotate(self.imagen_original, self.angulo)
         self.forma = self.imagen.get_rect()
+        self.rect = self.forma
         self.imagen_bala = imagen_bala
         self.disparada = False
         self.ultimo_disparo = pygame.time.get_ticks()
@@ -47,9 +48,15 @@ class Weapon():
                     self.disparada = False
                 
                 return bala
-            
-    def dibujar(self, pantalla):
-        pantalla.blit(self.imagen, self.forma)
+
+    def dibujar(self, pantalla, posicion_pantalla):
+        # Ajustar la posición según la cámara
+        imagen_rotada = pygame.transform.rotate(self.imagen_original, -self.angulo)
+        rect_rotado = imagen_rotada.get_rect(center=(
+            self.forma.centerx - posicion_pantalla[0],
+            self.forma.centery - posicion_pantalla[1]
+        ))
+        pantalla.blit(imagen_rotada, rect_rotado)
         #Muestra el cuadro del cañon (funciona como hitbox)
         #pygame.draw.rect(pantalla, constantes.ROJO, self.forma, 1)
         
@@ -63,7 +70,7 @@ class Bullet(pygame.sprite.Sprite):
         self.rect.center = tanque.forma.center
         #Calculo de la velocidad
         self.delta_x = math.cos(math.radians(self.angulo)) * constantes.VELOCIDAD_BALA
-        self.delta_y = math.sin(math.radians(self.angulo)) * constantes.VELOCIDAD_BALA
+        self.delta_y = math.sin(math.radians(-self.angulo)) * constantes.VELOCIDAD_BALA
         
     def update(self, tanques, obstaculos_tiles):
         daño = 0
@@ -78,7 +85,7 @@ class Bullet(pygame.sprite.Sprite):
         #Verificar si hay colision con un tanque
         for tanque in tanques:
             if tanque.forma.colliderect(self.rect):
-                daño = 15 + random.randint(0, 10)
+                daño = 10
                 posicion_daño = (tanque.forma)
                 tanque.energia -= daño
                 self.kill()
@@ -87,13 +94,19 @@ class Bullet(pygame.sprite.Sprite):
         #Verificar si hay colision con un obstaculo
         for obstaculo in obstaculos_tiles:
             if obstaculo[1].colliderect(self.rect):
-                self.kill()
+                # Si el obstáculo es destructible
+                if obstaculo[4] > 0:
+                    obstaculo[4] -= 1  # Restar 1 bala
+                    if obstaculo[4] == 0:
+                        obstaculos_tiles.remove(obstaculo)
+                # Si es indestructible, no hacemos nada más
+                self.kill()  # La bala siempre se destruye al impactar
                 break
         
         return daño, posicion_daño
-        
-    def dibujar(self, pantalla):
-        pantalla.blit(self.image, self.rect)
+
+    def dibujar(self, pantalla, posicion_pantalla):
+        pantalla.blit(self.image, (self.rect.x - posicion_pantalla[0], self.rect.y - posicion_pantalla[1]))
         #Muestra el cuadro de la bala (funciona como hitbox)
         #pygame.draw.rect(pantalla, constantes.COLOR_CAÑON, self.rect, 1)
     
