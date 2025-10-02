@@ -409,6 +409,12 @@ while run:
         tanque_jugador.dibujar(pantalla, posicion_pantalla)
         cañon_jugador.dibujar(pantalla, posicion_pantalla)
         
+        for arbusto in mundo.arbustos:
+            if arbusto[1].colliderect(tanque_jugador.forma):
+                temp_img = arbusto[0].copy()
+                temp_img.set_alpha(150)
+                pantalla.blit(temp_img, (arbusto[1].x, arbusto[1].y))
+        
         #Dibujar las balas
         for bala in grupo_balas:
             bala.dibujar(pantalla, posicion_pantalla)

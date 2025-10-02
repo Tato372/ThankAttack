@@ -120,7 +120,3 @@ class Mundo():
             pantalla_x = arbusto[1].x - cam_x
             if not arbusto[1].colliderect(tanque_jugador.forma):
                 pantalla.blit(arbusto[0], (pantalla_x, pantalla_y))
-            else:
-                temp_img = arbusto[0].copy()
-                temp_img.set_alpha(150)
-                pantalla.blit(temp_img, (pantalla_x, pantalla_y))
