@@ -13,10 +13,10 @@ class Weapon():
         self.imagen_bala = imagen_bala
         self.disparada = False
         self.ultimo_disparo = pygame.time.get_ticks()
-        
-    def uptade(self, tanque, tipo, en_rango):
+
+    def update(self, tanque, tipo, en_rango):
         bala = None
-        disparo_cooldown = constantes.DISPARO_COOLDOWN
+        disparo_cooldown = tanque.disparo_cooldown
         self.forma.center = tanque.forma.center
         self.angulo = tanque.rotate
         self.imagen = pygame.transform.rotate(self.imagen_original, self.angulo)
@@ -35,18 +35,12 @@ class Weapon():
                 
             return bala
 
-        if tipo == 2:
-            #Solo dispara si el tanque del jugador esta en rango
-            if en_rango == True:
-                if self.disparada == False and (pygame.time.get_ticks() - self.ultimo_disparo) >= disparo_cooldown:
+        if tipo == 2:  # enemigo
+            if en_rango:
+                tiempo_actual = pygame.time.get_ticks()
+                if tiempo_actual - self.ultimo_disparo >= tanque.disparo_cooldown:
                     bala = Bullet(self.imagen_bala, tanque, self.angulo)
-                    self.disparada = True
-                    self.ultimo_disparo = pygame.time.get_ticks()
-                
-                #Resetear el disparo
-                if self.disparada == True:
-                    self.disparada = False
-                
+                    self.ultimo_disparo = tiempo_actual  # reinicia el cooldown
                 return bala
 
     def dibujar(self, pantalla, posicion_pantalla):
@@ -77,10 +71,6 @@ class Bullet(pygame.sprite.Sprite):
         posicion_daño = None
         self.rect.x += self.delta_x
         self.rect.y -= self.delta_y
-        
-        #Eliminar la bala si sale de la pantalla
-        if self.rect.right < 0 or self.rect.left > constantes.ANCHO_VENTANA or self.rect.top > constantes.ALTO_VENTANA or self.rect.bottom < 0:
-            self.kill()
         
         #Verificar si hay colision con un tanque
         for tanque in tanques:

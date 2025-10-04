@@ -3,7 +3,7 @@ import pygame
 import constantes
 
 class Tanque():
-    def __init__(self, x, y, animaciones, energia, tipo_tanque):
+    def __init__(self, x, y, animaciones, energia, tipo_tanque, velocidad, disparo_cooldown):
         self.cañon = None
         self.energia = energia
         self.vivo = True
@@ -24,6 +24,8 @@ class Tanque():
         self.explosion = False
         self.animacion_muerte = []
         self.frame_index_muerte = 0
+        self.disparo_cooldown = disparo_cooldown
+        self.velocidad = velocidad
     
     def tanques_enemigos(self, posicion_pantalla, obstaculos_tiles, arbustos, tanque_jugador, grupo_balas_enemigas, tanques, data_objetos):
         clipped_line = ()
@@ -50,16 +52,16 @@ class Tanque():
                 # Movimiento horizontal
                 if abs(self.forma.centerx - tanque_jugador.forma.centerx) > abs(self.forma.centery - tanque_jugador.forma.centery):
                     if self.forma.centerx > tanque_jugador.forma.centerx:
-                        delta_x = -constantes.VELOCIDAD_ENEMIGO
+                        delta_x = -self.velocidad
                     elif self.forma.centerx < tanque_jugador.forma.centerx:
-                        delta_x = constantes.VELOCIDAD_ENEMIGO
+                        delta_x = self.velocidad
                 # Movimiento vertical
                 else:
                     if self.forma.centery > tanque_jugador.forma.centery:
-                        delta_y = -constantes.VELOCIDAD_ENEMIGO
+                        delta_y = -self.velocidad
                     elif self.forma.centery < tanque_jugador.forma.centery:
-                        delta_y = constantes.VELOCIDAD_ENEMIGO
-            
+                        delta_y = self.velocidad
+
         self.movimiento(delta_x, delta_y, obstaculos_tiles, tanques)
         
         #Datos para dar el funcionamiento con HASKELL
@@ -87,13 +89,13 @@ class Tanque():
             if obstaculo[1].clipline(campo_vision):
                 clipped_line = obstaculo[1].clipline(campo_vision)
                 
-        if not clipped_line and distancia <= constantes.RANGO_DISPARO and constantes.DISPARO_COOLDOWN < (pygame.time.get_ticks() - self.ultimo_ataque):
-            bala_enemiga = cañon_tanque.uptade(tanque, 2, True)
+        if not clipped_line and distancia <= constantes.RANGO_DISPARO and tanque.disparo_cooldown < (pygame.time.get_ticks() - self.ultimo_ataque):
+            bala_enemiga = cañon_tanque.update(tanque, 2, True)
             if bala_enemiga:
                 grupo_balas_enemigas.add(bala_enemiga)
         
         else:
-            bala_enemiga = cañon_tanque.uptade(tanque, 2, False)
+            bala_enemiga = cañon_tanque.update(tanque, 2, False)
             if bala_enemiga:
                 grupo_balas_enemigas.add(bala_enemiga)
     
