@@ -47,8 +47,8 @@ VELOCIDAD = 4
 DISPARO_COOLDOWN = 1000  # en milisegundos
 VELOCIDAD_BALA = 5
 TIPOS_TILES = 7
-RANGO_VISION = 192
-RANGO_DISPARO = 96
+RANGO_VISION = 1000000
+RANGO_DISPARO = 300
 CONFIG_TANQUES = {
             1: {  # 1 jugador
                 "Facil":      {1: 11, 2: 11, 3: 6, 4: 3},
@@ -67,27 +67,27 @@ TANQUE_STATS = {
     1: {  # Verde - Tipo 1
         "velocidad": 1.0,          # Lento
         "vida": 20,
-        "cooldown_disparo": 1800,  # Disparo lento (ms)
+        "cooldown_disparo": 3000,  # Disparo lento (ms)
     },
     2: {  # Amarillo - Tipo 2
         "velocidad": 1.0,          # Lento
         "vida": 30,
-        "cooldown_disparo": 800,   # Disparo rápido
+        "cooldown_disparo": 1000,   # Disparo rápido
     },
     3: {  # Marrón - Tipo 3
         "velocidad": 2.0,          # Rápido
         "vida": 40,
-        "cooldown_disparo": 800,   # Disparo rápido
+        "cooldown_disparo": 1000,   # Disparo rápido
     },
     4: {  # Rojo - Tipo 4
         "velocidad": 1.0,          # Lento
         "vida": 50,
-        "cooldown_disparo": 1800,  # Disparo lento
+        "cooldown_disparo": 3000,  # Disparo lento
     },
     5: {  # Negro - Definitivo
         "velocidad": 1.0,          # Lento
         "vida": 100,
-        "cooldown_disparo": 800,   # Disparo rápido
+        "cooldown_disparo": 1000,   # Disparo rápido
     }
 }
 

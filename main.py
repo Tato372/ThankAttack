@@ -3,6 +3,7 @@ import constantes
 from tanque import Tanque
 from weapon import Weapon
 from textos import DamageText
+from fortaleza import Fortaleza
 from items import Item
 from mundo import Mundo
 import os
@@ -81,58 +82,60 @@ def dibujar_texto(texto, fuente, color, x, y):
     
 ##Funcion para resetear el mundo
 def resetear_mundo():
-    global grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items
+    global oleada_actual, vidas_jugador
+    oleada_actual = 1
+    vidas_jugador = 3
     
-    # Vaciar los grupos de sprites
-    grupo_balas.empty()
-    grupo_balas_enemigas.empty()
-    grupo_textos_daño.empty()
-    grupo_items.empty()
+    # Simplemente llamamos a iniciar_partida con la misma configuración
+    return iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
 
-    # Vaciar y recargar los datos del mundo
-    data_suelo = []
-    data_objetos = []
-
-    for fila in range(constantes.FILAS):
-        fila_suelo = [0] * constantes.COLUMNAS
-        data_suelo.append(fila_suelo)
-
-        fila_objetos = [-1] * constantes.COLUMNAS
-        data_objetos.append(fila_objetos)
-
-    # Cargar archivos CSV
-    with open("niveles//nivel1_suelo.csv", newline='') as csvfile:
-        reader = csv.reader(csvfile, delimiter=',')
-        for x, fila in enumerate(reader):
-            for y, columna in enumerate(fila):
-                data_suelo[x][y] = int(columna)
-
-    with open("niveles//nivel1_objetos.csv", newline='') as csvfile:
-        reader = csv.reader(csvfile, delimiter=',')
-        for x, fila in enumerate(reader):
-            for y, columna in enumerate(fila):
-                data_objetos[x][y] = int(columna)
-    
-    # Crear el mundo
-    mundo = Mundo()
-    #mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad_seleccionada, jugadores_seleccionados)
-    
-    # Crear tanque del jugador
-    tanque_jugador = Tanque(144, 240, animaciones, 90, 1, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
-    tanques = [tanque_jugador]
-    
-    # Crear tanques enemigos
+def iniciar_partida(dificultad, num_jugadores):
+    """Crea y devuelve todos los objetos necesarios para una nueva partida."""
+    # Crear listas y grupos de sprites vacíos
+    tanques = []
     tanques_enemigos = []
-    for i in mundo.lista_enemigos:
-        i.animacion_muerte = animacion_muerte
-        tanques_enemigos.append(i)
-        tanques.append(i)
+    grupo_balas = pygame.sprite.Group()
+    grupo_balas_enemigas = pygame.sprite.Group()
+    grupo_textos_daño = pygame.sprite.Group()
+    grupo_items = pygame.sprite.Group()
 
+    # Crear el mundo usando la dificultad y jugadores seleccionados
+    mundo = Mundo()
+    mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad, num_jugadores)
+
+    # Crear tanque del jugador
+    px, py = mundo.posicion_spawn_jugador
+    tanque_jugador = Tanque(
+        px * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
+        py * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
+        animaciones, 90, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
+    )
+    tanques.append(tanque_jugador)
+    
+    #Crear el arma del tanque del jugador
+    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+
+    # Crear la fortaleza
+    fx, fy = mundo.posicion_fortaleza
+    fortaleza = Fortaleza(
+        fx * constantes.TAMAÑO_REJILLA,
+        fy * constantes.TAMAÑO_REJILLA,
+        imagen_fortaleza
+    )
+
+    # Crear tanques enemigos
+    for enemigo in mundo.lista_enemigos:
+        enemigo.animacion_muerte = animacion_muerte
+        enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
+        tanques_enemigos.append(enemigo)
+        tanques.append(enemigo)
+    
     # Crear items
     for item in mundo.lista_items:
         grupo_items.add(item)
     
-    return mundo, tanque_jugador, tanques, tanques_enemigos
+    # Devolver todos los objetos creados
+    return mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items
 
 ##Funcione para agregar y quitar la dificultad pesadilla si son 2 jugadores
 def agregar_dificultad_pesadilla():
@@ -161,12 +164,12 @@ def pantalla_inicio():
     # --- Selector de jugadores ---
     dibujar_texto("Jugadores:", fuente_inicio, constantes.BLANCO, botones_jugadores[0].x, botones_jugadores[0].y - 50)
     for i, rect in enumerate(botones_jugadores):
-        color = constantes.VERDE if jugadores_seleccionados == jugadores[i] else constantes.BLANCO
+        color = constantes.VERDE if jugadores_seleccionados == i + 1 else constantes.BLANCO
         pygame.draw.rect(pantalla, color, rect, 3)  # Borde
         dibujar_texto(jugadores[i], fuente_botones, constantes.BLANCO, rect.x + 10, rect.y + 10)
     # --- Selector de dificultad ---
     dibujar_texto("Dificultad:", fuente_inicio, constantes.BLANCO, botones_dificultad[0].x, botones_dificultad[0].y - 50)
-    if jugadores_seleccionados == "Dos Jugadores":
+    if jugadores_seleccionados == 2:
         agregar_dificultad_pesadilla()
         for i, rect in enumerate(botones_dificultad):
             color = constantes.VERDE if dificultad_seleccionada == dificultades[i] else constantes.BLANCO
@@ -188,7 +191,9 @@ def pantalla_inicio():
     
 #Variables
 nivel = 1
+oleada_actual = 1
 tanques = []
+vidas_jugador = 3
 
 dificultades = ["Facil", "Intermedio", "Dificil"]
 dificultad_actual = 0  # índice de la dificultad seleccionada
@@ -217,6 +222,10 @@ for x in range(constantes.TIPOS_TILES):
     imagen_tile = pygame.transform.scale(imagen_tile, (constantes.TAMAÑO_REJILLA, constantes.TAMAÑO_REJILLA))
     lista_tiles.append(imagen_tile)
 
+## Fortaleza
+imagen_fortaleza = pygame.image.load("assets//images//fortaleza//fortaleza.jpg") # Asegúrate que la ruta sea correcta
+imagen_fortaleza = pygame.transform.scale(imagen_fortaleza, (constantes.TAMAÑO_REJILLA * 5, constantes.TAMAÑO_REJILLA * 5)) # Hacemos que ocupe 5x5 tiles
+
 ##Tanques
 ###Jugador
 animaciones = []
@@ -227,7 +236,7 @@ for i in range(2):
 
 ###Enemigos
 directorio_tanques_enemigos = "assets//images//tanques_enemigos//"
-tipo_enemigos = nombre_carpetas(directorio_tanques_enemigos)
+tipo_enemigos = sorted(nombre_carpetas(directorio_tanques_enemigos))
 animaciones_enemigos = []
 for eni in tipo_enemigos:
     lista_temporal = []
@@ -238,7 +247,7 @@ for eni in tipo_enemigos:
         img_tanque_enemigo = escalar_img(img_tanque_enemigo, constantes.ESCALA_TANQUE_ANCHO, constantes.ESCALA_TANQUE_ALTO)
         lista_temporal.append(img_tanque_enemigo)
     animaciones_enemigos.append(lista_temporal)
-    
+
 ###Animacion de muerte
 animacion_muerte = []
 for i in range(5):
@@ -308,40 +317,6 @@ with open("niveles//nivel1_objetos.csv", newline='') as csvfile:
         for y, columna in enumerate(fila):
             data_objetos[x][y] = int(columna)
 
-#Crear el mundo
-mundo = Mundo()
-mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad_seleccionada, jugadores_seleccionados)
-
-#Crear tanque
-tanque_jugador = Tanque(144, 240, animaciones, 90, 1, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
-tanques.append(tanque_jugador)
-#Crear tanques enemigos
-##Crear lista de tanques enemigos
-tanques_enemigos = []
-for i in mundo.lista_enemigos:
-    i.animacion_muerte = animacion_muerte
-    i.cañon = Weapon(imagen_cañon, imagen_balas)
-    tanques_enemigos.append(i)
-    tanques.append(i)
-
-#Crear el arma del tanque del jugador
-cañon_jugador = Weapon(imagen_cañon, imagen_balas)
-
-
-#Crear un grupo de sprites
-##Grupo de balas
-grupo_balas = pygame.sprite.Group()
-##Grupo de balas enemigas
-grupo_balas_enemigas = pygame.sprite.Group()
-##Grupo de textos de daño
-grupo_textos_daño = pygame.sprite.Group()
-##Grupo de items
-grupo_items = pygame.sprite.Group()
-
-#Crear items
-for item in mundo.lista_items:
-    grupo_items.add(item)
-
 #Crear textos
 ##Texto de game over
 game_over_text = fuente_game_over.render("Game Over", True, constantes.NEGRO)
@@ -406,255 +381,215 @@ while run:
                 # --- Botones de jugadores ---
                 for i, rect in enumerate(botones_jugadores):
                     if rect.collidepoint(event.pos):
-                        jugadores_seleccionados = jugadores[i]
+                        jugadores_seleccionados = i + 1
                 
                 # --- Botones de Jugar / Salir ---
                 if boton_jugar.collidepoint(event.pos):
                     mostrar_inicio = False
+                    # ¡AQUÍ INICIAMOS LA PARTIDA CON LOS VALORES SELECCIONADOS!
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
+                    # Creamos el cañón del jugador aquí también
+                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
                 if boton_salir.collidepoint(event.pos):
-                    run = False
-    
+                    run = False 
+
     else:
         pantalla.fill(constantes.COLOR_BG)
-        #Dibujar la rejilla
-        dibujar_rejilla()
-        
-        #Que vaya a 120 fps
         reloj.tick(constantes.FPS)
 
-
+        # =================================================
+        # SECCIÓN 1: ACTUALIZAR LÓGICA DEL JUEGO
+        # =================================================
         if tanque_jugador.vivo:
-                #Calcular movimiento del tanque
-                delta_x = 0
-                delta_y = 0
-                
-                if mover_arriba == True:
-                    delta_y = -constantes.VELOCIDAD
-                if mover_abajo == True:
-                    delta_y = constantes.VELOCIDAD
-                if mover_izquierda == True:
-                    delta_x = -constantes.VELOCIDAD
-                if mover_derecha == True:
-                    delta_x = constantes.VELOCIDAD
+            # Calcular movimiento del jugador
+            delta_x = 0
+            delta_y = 0
+            if mover_arriba: delta_y = -constantes.VELOCIDAD
+            elif mover_abajo: delta_y = constantes.VELOCIDAD
+            elif mover_izquierda: delta_x = -constantes.VELOCIDAD
+            elif mover_derecha: delta_x = constantes.VELOCIDAD
 
-                #Mover tanque
-                posicion_pantalla = tanque_jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
- 
-                #Actualizar mundo
-                mundo.update(posicion_pantalla)
-                
-                #Actualiza estado del tanque
-                tanque_jugador.update()
-                
-                #Actualiza estado de los tanques enemigos
-                for tanque in tanques_enemigos:
-                    if not tanque.update():  
-                        tanques_enemigos.remove(tanque)
-                        tanques.remove(tanque)
-                        tanque_jugador.puntaje += 100
-                    else:
-                        tanque.tanques_enemigos(posicion_pantalla, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, grupo_balas_enemigas, tanques, data_objetos)
-                        tanque.update()
-                
-                #Actualiza estado del arma
-                bala = cañon_jugador.update(tanque_jugador, 1, False)
-                #Actualizar los items
-                grupo_items.update(posicion_pantalla, tanque_jugador)
-                
-                cam_x, cam_y = posicion_pantalla
-                cam_x = tanque_jugador.forma.centerx - constantes.ANCHO_VENTANA
-                cam_y = tanque_jugador.forma.centery - constantes.ALTO_VENTANA
-                
-                # --- Definir zona muerta ---
-                zona_muerta_ancho = constantes.ANCHO_VENTANA // 3   # 1/3 del ancho
-                zona_muerta_alto = constantes.ALTO_VENTANA // 3     # 1/3 del alto
-
-                zona_muerta_x = (constantes.ANCHO_VENTANA - zona_muerta_ancho) // 2
-                zona_muerta_y = (constantes.ALTO_VENTANA - zona_muerta_alto) // 2
-                
-                # Posición del tanque en coordenadas de pantalla
-                tanque_x_pantalla = tanque_jugador.forma.centerx - cam_x
-                tanque_y_pantalla = tanque_jugador.forma.centery - cam_y
-                
-                if tanque_x_pantalla < zona_muerta_x:
-                    cam_x -= (zona_muerta_x - tanque_x_pantalla)
-                elif tanque_x_pantalla > zona_muerta_x + zona_muerta_ancho:
-                    cam_x += (tanque_x_pantalla - (zona_muerta_x + zona_muerta_ancho))
-                
-                if tanque_y_pantalla < zona_muerta_y:
-                    cam_y -= (zona_muerta_y - tanque_y_pantalla)
-                elif tanque_y_pantalla > zona_muerta_y + zona_muerta_alto:
-                    cam_y += (tanque_y_pantalla - (zona_muerta_y + zona_muerta_alto))
-                
-                # Limitar cámara para que no se salga del mapa
-                cam_x = max(0, min(cam_x, constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
-                cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
-                
-                posicion_pantalla = [cam_x, cam_y]
-                if bala:
-                    grupo_balas.add(bala)
-                
-                for bala in grupo_balas:
-                    daño, posicion_daño = bala.update(tanques_enemigos, mundo.obstaculos_tiles)
-                    if daño:
-                        texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
-                        grupo_textos_daño.add(texto_daño)
-                
-                #Actualiza el estado del arma de los tanques enemigos
-                for tanque in tanques_enemigos:
-                    if tanque.cañon:
-                        tanque.update_cañon_enemigo(tanque, tanque.cañon, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, grupo_balas_enemigas)
-
-                for bala_enemiga in grupo_balas_enemigas:
-                    daño, posicion_daño = bala_enemiga.update([tanque_jugador], mundo.obstaculos_tiles)
-                    if daño:
-                        texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
-                        grupo_textos_daño.add(texto_daño)
-                        
-                #Actualizar los textos de daño
-                grupo_textos_daño.update(posicion_pantalla)
+            # Mover tanque del jugador
+            tanque_jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
             
-        #Dibujar el mundo
-        mundo.dibujar(pantalla, tanque_jugador, posicion_pantalla)
+            # Actualizar estado del tanque del jugador
+            tanque_jugador.update()
         
-        cam_x, cam_y = posicion_pantalla
-        cam_x = tanque_jugador.forma.centerx - constantes.ANCHO_VENTANA
-        cam_y = tanque_jugador.forma.centery - constantes.ALTO_VENTANA
+        # =================================================
+        # SECCIÓN 2: CALCULAR POSICIÓN DE LA CÁMARA (¡AHORA ESTÁ ANTES!)
+        # =================================================
+        cam_x = tanque_jugador.forma.centerx - constantes.ANCHO_VENTANA / 2
+        cam_y = tanque_jugador.forma.centery - constantes.ALTO_VENTANA / 2
         
-        # --- Definir zona muerta ---
-        zona_muerta_ancho = constantes.ANCHO_VENTANA // 3   # 1/3 del ancho
-        zona_muerta_alto = constantes.ALTO_VENTANA // 3     # 1/3 del alto
-
-        zona_muerta_x = (constantes.ANCHO_VENTANA - zona_muerta_ancho) // 2
-        zona_muerta_y = (constantes.ALTO_VENTANA - zona_muerta_alto) // 2
-        
-        # Posición del tanque en coordenadas de pantalla
-        tanque_x_pantalla = tanque_jugador.forma.centerx - cam_x
-        tanque_y_pantalla = tanque_jugador.forma.centery - cam_y
-        
-        if tanque_x_pantalla < zona_muerta_x:
-            cam_x -= (zona_muerta_x - tanque_x_pantalla)
-        elif tanque_x_pantalla > zona_muerta_x + zona_muerta_ancho:
-            cam_x += (tanque_x_pantalla - (zona_muerta_x + zona_muerta_ancho))
-        
-        if tanque_y_pantalla < zona_muerta_y:
-            cam_y -= (zona_muerta_y - tanque_y_pantalla)
-        elif tanque_y_pantalla > zona_muerta_y + zona_muerta_alto:
-            cam_y += (tanque_y_pantalla - (zona_muerta_y + zona_muerta_alto))
-        
-        # Limitar cámara para que no se salga del mapa
         cam_x = max(0, min(cam_x, constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
         cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
-        
         posicion_pantalla = [cam_x, cam_y]
+
+        # =================================================
+        # SECCIÓN 3: ACTUALIZAR EL RESTO DE LA LÓGICA (USANDO LA CÁMARA)
+        # =================================================
+        if tanque_jugador.vivo:
+            # Actualizar tanques enemigos (IA y estado)
+            for tanque in tanques_enemigos:
+                if not tanque.update():  
+                    tanques_enemigos.remove(tanque)
+                    tanques.remove(tanque)
+                    tanque_jugador.puntaje += 100
+                else:
+                    tanque.tanques_enemigos(posicion_pantalla, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, fortaleza, grupo_balas_enemigas, tanques, data_objetos)
+                    tanque.update_cañon_enemigo(tanque, tanque.cañon, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, grupo_balas_enemigas)
+            
+            # Actualizar arma del jugador y balas
+            bala = cañon_jugador.update(tanque_jugador, 1, False)
+            if bala:
+                grupo_balas.add(bala)
+            
+            for bala in grupo_balas:
+                daño, posicion_daño = bala.update(tanques_enemigos, mundo.obstaculos_tiles)
+                if daño:
+                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
+                    grupo_textos_daño.add(texto_daño)
+            
+            # Actualizar balas enemigas
+            for bala_enemiga in grupo_balas_enemigas:
+                if fortaleza.rect.colliderect(bala_enemiga.rect):
+                    fortaleza.energia -= 10
+                    bala_enemiga.kill()
+                daño, posicion_daño = bala_enemiga.update([tanque_jugador], mundo.obstaculos_tiles)
+                if daño:
+                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
+                    grupo_textos_daño.add(texto_daño)
+
+            # Actualizar items y textos de daño <-- MOVIDOS AQUÍ
+            grupo_items.update(posicion_pantalla, tanque_jugador)
+            grupo_textos_daño.update(posicion_pantalla)
+            
+            # --- INICIO DE LÓGICA DE OLEADAS (REFINADA) ---
+            if not tanques_enemigos and mundo.tanques_restantes:
+                oleada_actual += 1
+                
+                # La función ahora devuelve los tanques recién creados
+                nuevos_enemigos = mundo.spawn_enemigos(animaciones_enemigos, cantidad=4)
+
+                # Inicializamos y añadimos solo esos nuevos tanques a las listas del juego
+                for enemigo in nuevos_enemigos:
+                    enemigo.animacion_muerte = animacion_muerte
+                    enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
+                    tanques_enemigos.append(enemigo)
+                    tanques.append(enemigo)
+            # --- FIN DE LÓGICA DE OLEADAS ---
+
+        # =================================================
+        # SECCIÓN 4: DIBUJAR TODO EN PANTALLA
+        # =================================================
+        # Mundo y Fortaleza
+        mundo.dibujar(pantalla, posicion_pantalla)
+        fortaleza.dibujar(pantalla, posicion_pantalla)
         
-        #Dibujar a los tanques enemigos
-        # Tanques enemigos
+        # Items
+        for item in grupo_items:
+            pantalla.blit(item.image, (item.rect.x - posicion_pantalla[0], item.rect.y - posicion_pantalla[1]))
+        
+        # Tanques y Cañones
+        for tanque in tanques_enemigos:
+            tanque.dibujar(pantalla, posicion_pantalla)
+        tanque_jugador.dibujar(pantalla, posicion_pantalla)
+        
         for tanque in tanques_enemigos:
             if tanque.cañon:
-                tanque.dibujar(pantalla, posicion_pantalla)
                 tanque.cañon.dibujar(pantalla, posicion_pantalla)
-
-        # Tanque jugador
-        tanque_jugador.dibujar(pantalla, posicion_pantalla)
         cañon_jugador.dibujar(pantalla, posicion_pantalla)
         
+        # Arbustos
+        # Arbustos (correctamente dibujados al final para el efecto de transparencia)
         for arbusto in mundo.arbustos:
+            # Dibuja el arbusto opaco siempre (esto tapará a los enemigos que estén debajo)
+            pantalla.blit(arbusto[0], (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
+            # Si el JUGADOR está dentro, dibuja una copia transparente encima de todo
             if arbusto[1].colliderect(tanque_jugador.forma):
-                temp_img = arbusto[0].copy()
-                temp_img.set_alpha(150)
+                temp_img = arbusto[0]
+                temp_img.set_alpha(150) # Hacemos la copia transparente
                 pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
-        
-        #Dibujar las balas
+                
+        # Balas y textos
         for bala in grupo_balas:
             bala.dibujar(pantalla, posicion_pantalla)
-        
-        #Dibujar las balas enemigas
         for bala_enemiga in grupo_balas_enemigas:
             bala_enemiga.dibujar(pantalla, posicion_pantalla)
-
-        #Dibujar los corazones
-        vida_jugador()
-        
-        #Dibujar textos
-        ##Dibujar los textos de daño
         grupo_textos_daño.draw(pantalla)
-        ##Dibujar texto de nivel
-        dibujar_texto(f"Nivel: " + str(nivel), fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 165 , 20)
-        ##Dibujar texto de puntaje
-        dibujar_texto(f"Puntaje: " + str(tanque_jugador.puntaje), fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190 , 50)
         
-        #Dibujar los items
-        for item in grupo_items:
-           pantalla.blit(item.image, (item.rect.x - posicion_pantalla[0], item.rect.y - posicion_pantalla[1]))
-
+        # HUD
+        vida_jugador()
+        dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 250, 50)
+        dibujar_texto(f"Puntaje: {tanque_jugador.puntaje}", fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190, 50)
+        dibujar_texto(f"Vidas: {vidas_jugador}", fuente, constantes.VERDE, constantes.ANCHO_VENTANA - 165, 80)
         
-        if tanque_jugador.vivo == False:
-            #Cargar y escalar la imagen de game over
-            game_over_image = pygame.image.load("assets//images//pantallas//pantalla_game_over.png")
-            game_over_image = escalar_img(game_over_image, constantes.ANCHO_VENTANA / game_over_image.get_width(), constantes.ALTO_VENTANA / game_over_image.get_height())
-            pantalla.blit(game_over_image, (0, 0))
+        # =================================================
+        # SECCIÓN 5: LÓGICA DE FIN DE PARTIDA
+        # =================================================
+        if fortaleza.energia <= 0:
+            tanque_jugador.vivo = False
             
-            #Crear una superficie roja transparente
-            overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
-            overlay.set_alpha(128)  # Ajustar la transparencia (0-255)
-            overlay.fill(constantes.ROJO_OSCURO)  # Rellenar con color rojo oscuro
+        if not tanque_jugador.vivo:
+            vidas_jugador -= 1
+            if vidas_jugador > 0:
+                tanque_jugador.energia = 90
+                tanque_jugador.vivo = True
+                px, py = mundo.posicion_spawn_jugador
+                tanque_jugador.forma.center = (
+                    px * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
+                    py * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2)
+                )
+            else:
+                # Pantalla de Game Over
+                game_over_image = pygame.image.load("assets//images//pantallas//pantalla_game_over.png")
+                game_over_image = escalar_img(game_over_image, constantes.ANCHO_VENTANA / game_over_image.get_width(), constantes.ALTO_VENTANA / game_over_image.get_height())
+                pantalla.blit(game_over_image, (0, 0))
+                overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA), pygame.SRCALPHA)
+                overlay.fill(constantes.ROJO_TRANSPARENTE)
+                pantalla.blit(overlay, (0, 0))
+                text_rect = game_over_text.get_rect(center=(constantes.ANCHO_VENTANA/2, constantes.ALTO_VENTANA/2))
+                pantalla.blit(game_over_text, text_rect)
+                dibujar_boton_retro("Reiniciar", boton_reinicio)
+        
+        if not tanques_enemigos and tanque_jugador.vivo:
+            # Pantalla de Victoria
+            overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA), pygame.SRCALPHA)
+            overlay.fill((0, 255, 0, 128))
             pantalla.blit(overlay, (0, 0))
-            
-            #Dibujar el texto de game over
-            text_rect = game_over_text.get_rect(center=(constantes.ANCHO_VENTANA/2, constantes.ALTO_VENTANA/2))
-            pantalla.blit(game_over_text, text_rect)
-            
-            #Dibujar el boton de reinicio
-            pygame.draw.rect(pantalla, constantes.ROJO, boton_reinicio) 
-            pantalla.blit(texto_boton_reinicio, (boton_reinicio.x + 10, boton_reinicio.y + 10))
-        
-        if tanques_enemigos == []:        
-            #Crear una superficie verde transparente
-            overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
-            overlay.set_alpha(128)  # Ajustar la transparencia (0-255)
-            overlay.fill(constantes.VERDE)  # Rellenar con color rojo oscuro
-            pantalla.blit(overlay, (0, 0))
-            
-            #Dibujar el texto de game over
             text_rect = texto_victoria.get_rect(center=(constantes.ANCHO_VENTANA/2, constantes.ALTO_VENTANA/2))
             pantalla.blit(texto_victoria, text_rect)
-            
-            #Dibujar el boton de reinicio
-            pygame.draw.rect(pantalla, constantes.VERDE_OSCURO, boton_reinicio_vic) 
-            pantalla.blit(texto_boton_reinicio_vic, (boton_reinicio_vic.x + 10, boton_reinicio_vic.y + 10))
-        
+            dibujar_boton_retro("Reiniciar", boton_reinicio_vic)
+
+        # =================================================
+        # SECCIÓN 6: MANEJO DE EVENTOS
+        # =================================================
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
             
             if event.type == pygame.KEYDOWN:
-                if mover_arriba == False and mover_abajo == False:
-                    if event.key == pygame.K_a:
-                        mover_izquierda = True
-                    if event.key == pygame.K_d:
-                        mover_derecha = True
-                if mover_derecha == False and mover_izquierda == False:
-                    if event.key == pygame.K_w:
-                        mover_arriba = True
-                    if event.key == pygame.K_s:
-                        mover_abajo = True
-                    
+                if event.key == pygame.K_a: mover_izquierda = True
+                if event.key == pygame.K_d: mover_derecha = True
+                if event.key == pygame.K_w: mover_arriba = True
+                if event.key == pygame.K_s: mover_abajo = True
             if event.type == pygame.KEYUP:
-                if event.key == pygame.K_a:
-                    mover_izquierda = False
-                if event.key == pygame.K_d:
-                    mover_derecha = False
-                if event.key == pygame.K_w:
-                    mover_arriba = False
-                if event.key == pygame.K_s:
-                    mover_abajo = False
+                if event.key == pygame.K_a: mover_izquierda = False
+                if event.key == pygame.K_d: mover_derecha = False
+                if event.key == pygame.K_w: mover_arriba = False
+                if event.key == pygame.K_s: mover_abajo = False
                     
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if (boton_reinicio.collidepoint(event.pos) and tanque_jugador.vivo == False) or (boton_reinicio_vic.collidepoint(event.pos) and not tanques_enemigos):
-                    #Reiniciar el juego
-                    tanques = []
-                    mundo, tanque_jugador, tanques, tanques_enemigos = resetear_mundo()
+                game_over = vidas_jugador <= 0 and not tanque_jugador.vivo
+                victoria = not tanques_enemigos and tanque_jugador.vivo
+                
+                if game_over and boton_reinicio.collidepoint(event.pos):
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
+                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+                
+                if victoria and boton_reinicio_vic.collidepoint(event.pos):
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
+                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
 
         pygame.display.update()
 

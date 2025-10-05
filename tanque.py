@@ -27,48 +27,72 @@ class Tanque():
         self.disparo_cooldown = disparo_cooldown
         self.velocidad = velocidad
     
-    def tanques_enemigos(self, posicion_pantalla, obstaculos_tiles, arbustos, tanque_jugador, grupo_balas_enemigas, tanques, data_objetos):
-        clipped_line = ()
+    # En tanque.py, reemplaza el método existente
+
+    def tanques_enemigos(self, posicion_pantalla, obstaculos_tiles, arbustos, tanque_jugador, fortaleza, grupo_balas_enemigas, tanques, data_objetos):
         delta_x = 0
         delta_y = 0
+        objetivo_actual = None
+        distancia_minima = float('inf') # Empezamos con una distancia infinita
 
-        #Hacer que persigan al tanque del jugador
-        # --- COMPROBAR SI EL JUGADOR ESTÁ EN UN ARBUSTO ---
-        self.jugador_oculto = False
+        # --- Lógica de Decisión de Objetivo ---
+        
+        # 1. Evaluar al jugador como posible objetivo
+        # Comprobar si el jugador está oculto
+        jugador_oculto = False
         for arbusto in arbustos:
             if arbusto[1].colliderect(tanque_jugador.forma):
-                self.jugador_oculto = True
+                jugador_oculto = True
                 break
         
-        # Hacer que persigan al tanque del jugador solo si no está en arbusto
-        if not self.jugador_oculto:
-            distancia = math.sqrt(((self.forma.centerx - tanque_jugador.forma.centerx)**2) + ((self.forma.centery - tanque_jugador.forma.centery)**2))
-            campo_vision = ((self.forma.centerx, self.forma.centery), (tanque_jugador.forma.centerx, tanque_jugador.forma.centery))
+        if not jugador_oculto:
+            distancia_jugador = math.sqrt(((self.forma.centerx - tanque_jugador.forma.centerx)**2) + ((self.forma.centery - tanque_jugador.forma.centery)**2))
+            # Comprobar línea de visión hacia el jugador
+            if distancia_jugador < constantes.RANGO_VISION:
+                campo_vision_jugador = ((self.forma.centerx, self.forma.centery), (tanque_jugador.forma.centerx, tanque_jugador.forma.centery))
+                bloqueado = False
+                for obstaculo in obstaculos_tiles:
+                    if obstaculo[1].clipline(campo_vision_jugador):
+                        bloqueado = True
+                        break
+                if not bloqueado:
+                    objetivo_actual = tanque_jugador.forma
+                    distancia_minima = distancia_jugador
+
+        # 2. Evaluar la fortaleza como posible objetivo (siempre es visible, no se oculta)
+        distancia_fortaleza = math.sqrt(((self.forma.centerx - fortaleza.rect.centerx)**2) + ((self.forma.centery - fortaleza.rect.centery)**2))
+        # Comprobar línea de visión hacia la fortaleza
+        if distancia_fortaleza < constantes.RANGO_VISION:
+            campo_vision_fortaleza = ((self.forma.centerx, self.forma.centery), (fortaleza.rect.centerx, fortaleza.rect.centery))
+            bloqueado = False
             for obstaculo in obstaculos_tiles:
-                if obstaculo[1].clipline(campo_vision):
-                    clipped_line = obstaculo[1].clipline(campo_vision)
+                if obstaculo[1].clipline(campo_vision_fortaleza):
+                    bloqueado = True
+                    break
+            if not bloqueado:
+                # Si la fortaleza está más cerca que el jugador, se convierte en el nuevo objetivo
+                if distancia_fortaleza < distancia_minima:
+                    objetivo_actual = fortaleza.rect
+                    distancia_minima = distancia_fortaleza
 
-            if not clipped_line and distancia < constantes.RANGO_VISION:
-                # Movimiento horizontal
-                if abs(self.forma.centerx - tanque_jugador.forma.centerx) > abs(self.forma.centery - tanque_jugador.forma.centery):
-                    if self.forma.centerx > tanque_jugador.forma.centerx:
-                        delta_x = -self.velocidad
-                    elif self.forma.centerx < tanque_jugador.forma.centerx:
-                        delta_x = self.velocidad
-                # Movimiento vertical
-                else:
-                    if self.forma.centery > tanque_jugador.forma.centery:
-                        delta_y = -self.velocidad
-                    elif self.forma.centery < tanque_jugador.forma.centery:
-                        delta_y = self.velocidad
+        # --- Lógica de Movimiento hacia el Objetivo ---
+        if objetivo_actual:
+            # Movimiento horizontal
+            if abs(self.forma.centerx - objetivo_actual.centerx) > abs(self.forma.centery - objetivo_actual.centery):
+                if self.forma.centerx > objetivo_actual.centerx:
+                    delta_x = -self.velocidad
+                elif self.forma.centerx < objetivo_actual.centerx:
+                    delta_x = self.velocidad
+            # Movimiento vertical
+            else:
+                if self.forma.centery > objetivo_actual.centery:
+                    delta_y = -self.velocidad
+                elif self.forma.centery < objetivo_actual.centery:
+                    delta_y = self.velocidad
 
+        # Mover el tanque (la lógica de colisiones que ya tenías funciona igual)
         self.movimiento(delta_x, delta_y, obstaculos_tiles, tanques)
-        
-        #Datos para dar el funcionamiento con HASKELL
-        ##Obtener el tile en el que está el tanque del jugador
-        ubicacion_jugador = 214 #Se inicializa en el tile de spawn
-        mapa = data_objetos
-        
+            
         
         
     
@@ -100,26 +124,27 @@ class Tanque():
                 grupo_balas_enemigas.add(bala_enemiga)
     
     def update(self):
-        if self.tipo_tanque == 1:
+        if self.tipo_tanque == 0:
             if self.energia <= 0:
                 self.energia = 0
                 self.vivo = False
         
-        if self.tipo_tanque == 2:
+        if self.tipo_tanque >= 1:
             #Si el tanque fue eliminado, se muestra primero la animación de explosión
             if self.explosion:
+                # PRIMERO, comprobamos si la animación ya terminó
+                if self.frame_index_muerte >= len(self.animacion_muerte):
+                    return False # Si ya terminó, avisamos para que se elimine el tanque
+
+                # SI NO ha terminado, continuamos mostrando la animación
                 cooldown_muerte = 150
-                self.imagen = self.animacion_muerte[self.frame_index_muerte]
+                self.imagen = self.animacion_muerte[self.frame_index_muerte] # Esta línea ahora es segura
                 if pygame.time.get_ticks() - self.update_time >= cooldown_muerte:
                     self.frame_index_muerte += 1
                     self.update_time = pygame.time.get_ticks()
-                
-                #Si la animación de muerte termina, se elimina el tanque
-                if self.frame_index_muerte >= len(self.animacion_muerte):
-                    return False 
 
             else:
-                #Comprobar si el tanque esta muerto
+                #Comprobar si el tanque esta muerto para iniciar la explosión
                 if self.energia <= 0 and not self.explosion:
                     self.energia = 0
                     self.vivo = False
@@ -127,8 +152,8 @@ class Tanque():
                     self.frame_index_muerte = 0
                     self.update_time = pygame.time.get_ticks() 
                 
-                #Si el tanque no esta en explosion(cuando muere se genera primero la explosion), actualiza su animación normal
-                if not self.explosion:
+                #Si el tanque no esta en explosion, actualiza su animación normal
+                else: # Usamos 'else' para evitar que se actualice la animación normal en el mismo frame que muere
                     cooldown_animacion = 125
                     self.imagen = self.animaciones[self.frame_index]
                     if pygame.time.get_ticks() - self.update_time >= cooldown_animacion:
@@ -154,8 +179,7 @@ class Tanque():
             self.cañon.dibujar(pantalla, posicion_pantalla)
     
     def movimiento(self, delta_x, delta_y, obstaculos_tiles, tanques):
-        posicion_pantalla = [0, 0]
-        # 1. Actualizar rotación según dirección
+        # 1. Actualizar rotación según dirección (esto se queda igual)
         if delta_x > 0:
             self.rotate = 0
         if delta_x < 0:
@@ -165,7 +189,7 @@ class Tanque():
         if delta_y < 0:
             self.rotate = 270
         
-        # 2. Mover en X y resolver colisiones    
+        # 2. Mover en X y resolver colisiones (esto se queda igual)
         self.forma.x += delta_x
         for obstaculo in obstaculos_tiles:
             if obstaculo[1].colliderect(self.forma):
@@ -196,17 +220,8 @@ class Tanque():
                 if delta_y < 0:
                     self.forma.top = tanque.forma.bottom
         
+        # Límites del mapa (esto se queda igual)
         self.forma.left = max(0, self.forma.left)
         self.forma.right = min(constantes.MAPA_ANCHO, self.forma.right)
         self.forma.top = max(0, self.forma.top)
         self.forma.bottom = min(constantes.MAPA_ALTO, self.forma.bottom)
-        
-        if tanque == 1:
-            posicion_pantalla[0] = self.forma.centerx - constantes.ANCHO_VENTANA
-            posicion_pantalla[1] = self.forma.centery - constantes.ALTO_VENTANA
-
-            # Limitar la cámara para que no se salga del mapa
-            posicion_pantalla[0] = max(0, min(posicion_pantalla[0], constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
-            posicion_pantalla[1] = max(0, min(posicion_pantalla[1], constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
-
-        return posicion_pantalla
