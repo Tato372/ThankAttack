@@ -1,6 +1,7 @@
 import math
 import pygame
 import constantes
+import random
 
 class Tanque():
     def __init__(self, x, y, animaciones, energia, tipo_tanque, velocidad, disparo_cooldown):
@@ -26,102 +27,142 @@ class Tanque():
         self.frame_index_muerte = 0
         self.disparo_cooldown = disparo_cooldown
         self.velocidad = velocidad
-    
-    # En tanque.py, reemplaza el método existente
-
-    def tanques_enemigos(self, posicion_pantalla, obstaculos_tiles, arbustos, tanque_jugador, fortaleza, grupo_balas_enemigas, tanques, data_objetos):
-        delta_x = 0
-        delta_y = 0
-        objetivo_actual = None
-        distancia_minima = float('inf') # Empezamos con una distancia infinita
-
-        # --- Lógica de Decisión de Objetivo ---
+        self.modo_evasion = 0
         
-        # 1. Evaluar al jugador como posible objetivo
-        # Comprobar si el jugador está oculto
-        jugador_oculto = False
+    def es_visible(self, objetivo, arbustos, obstaculos):
+        """Comprueba si un objetivo es visible, considerando arbustos y muros."""
+        
+        # Corrección: Usar el rectángulo correcto (.forma para tanques, .rect para fortaleza)
+        rect_objetivo = getattr(objetivo, 'forma', getattr(objetivo, 'rect', None))
+        if not rect_objetivo:
+            return False
+
+        # 1. Comprobar si el objetivo está en un arbusto
+        objetivo_en_arbusto = None
         for arbusto in arbustos:
-            if arbusto[1].colliderect(tanque_jugador.forma):
-                jugador_oculto = True
+            if arbusto[1].colliderect(rect_objetivo):
+                objetivo_en_arbusto = arbusto
                 break
         
-        if not jugador_oculto:
-            distancia_jugador = math.sqrt(((self.forma.centerx - tanque_jugador.forma.centerx)**2) + ((self.forma.centery - tanque_jugador.forma.centery)**2))
-            # Comprobar línea de visión hacia el jugador
-            if distancia_jugador < constantes.RANGO_VISION:
-                campo_vision_jugador = ((self.forma.centerx, self.forma.centery), (tanque_jugador.forma.centerx, tanque_jugador.forma.centery))
-                bloqueado = False
-                for obstaculo in obstaculos_tiles:
-                    if obstaculo[1].clipline(campo_vision_jugador):
-                        bloqueado = True
-                        break
-                if not bloqueado:
-                    objetivo_actual = tanque_jugador.forma
-                    distancia_minima = distancia_jugador
+        if objetivo_en_arbusto:
+            if not self.forma.colliderect(objetivo_en_arbusto[1]):
+                return False
 
-        # 2. Evaluar la fortaleza como posible objetivo (siempre es visible, no se oculta)
-        distancia_fortaleza = math.sqrt(((self.forma.centerx - fortaleza.rect.centerx)**2) + ((self.forma.centery - fortaleza.rect.centery)**2))
-        # Comprobar línea de visión hacia la fortaleza
-        if distancia_fortaleza < constantes.RANGO_VISION:
-            campo_vision_fortaleza = ((self.forma.centerx, self.forma.centery), (fortaleza.rect.centerx, fortaleza.rect.centery))
-            bloqueado = False
-            for obstaculo in obstaculos_tiles:
-                if obstaculo[1].clipline(campo_vision_fortaleza):
-                    bloqueado = True
-                    break
-            if not bloqueado:
-                # Si la fortaleza está más cerca que el jugador, se convierte en el nuevo objetivo
-                if distancia_fortaleza < distancia_minima:
-                    objetivo_actual = fortaleza.rect
-                    distancia_minima = distancia_fortaleza
+        # 2. Comprobar línea de visión a través de muros indestructibles
+        campo_vision = ((self.forma.centerx, self.forma.centery), (rect_objetivo.centerx, rect_objetivo.centery))
+        for obs in obstaculos:
+            if obs[4] <= 0 and obs[1].clipline(campo_vision):
+                return False
+        
+        return True
 
-        # --- Lógica de Movimiento hacia el Objetivo ---
-        if objetivo_actual:
-            # Movimiento horizontal
-            if abs(self.forma.centerx - objetivo_actual.centerx) > abs(self.forma.centery - objetivo_actual.centery):
-                if self.forma.centerx > objetivo_actual.centerx:
-                    delta_x = -self.velocidad
-                elif self.forma.centerx < objetivo_actual.centerx:
-                    delta_x = self.velocidad
-            # Movimiento vertical
-            else:
-                if self.forma.centery > objetivo_actual.centery:
-                    delta_y = -self.velocidad
-                elif self.forma.centery < objetivo_actual.centery:
-                    delta_y = self.velocidad
+    def actualizar_ia_pixel(self, jugador, fortaleza, obstaculos, todos_los_tanques, arbustos, balas_enemigas):
+        """IA definitiva con movimiento fluido por píxeles y lógica de evasión."""
 
-        # Mover el tanque (la lógica de colisiones que ya tenías funciona igual)
-        self.movimiento(delta_x, delta_y, obstaculos_tiles, tanques)
+        # REGLA 4: Si está explotando, no hacer nada más.
+        if self.explosion:
+            return
+
+        # 1. DECIDIR OBJETIVO DE MOVIMIENTO
+        objetivo_movimiento = fortaleza.rect # REGLA 1: Por defecto, ir a la fortaleza
+        
+        dist_jugador = math.sqrt((self.forma.centerx - jugador.forma.centerx)**2 + (self.forma.centery - jugador.forma.centery)**2)
+        
+        # REGLA 2 Y 3: Si el jugador es visible y está en rango, cambiar de objetivo
+        if dist_jugador < constantes.RANGO_AGGRO_JUGADOR and self.es_visible(jugador, arbustos, obstaculos):
+            objetivo_movimiento = jugador.forma
+
+        # --- INICIO DEL BLOQUE: LÓGICA DE RETIRADA SI ESTÁ ATASCADO ---
+        # 1. Comprobar los 4 lados para ver si estamos en un callejón sin salida
+        bloqueos = 0
+        direcciones = [(0, -self.velocidad*2), (0, self.velocidad*2), (-self.velocidad*2, 0), (self.velocidad*2, 0)]
+        for dx, dy in direcciones:
+            sensor = self.forma.copy()
+            sensor.move_ip(dx, dy)
+            if any(obs[1].colliderect(sensor) for obs in obstaculos) or \
+               any(t is not self and t.forma.colliderect(sensor) for t in todos_los_tanques):
+                bloqueos += 1
+        
+        # 2. Si 3 o más lados están bloqueados, forzar retirada
+        if bloqueos >= 3:
+            # ¡CORRECCIÓN! Inicializamos las variables aquí para que siempre existan.
+            delta_x, delta_y = 0, 0
             
+            # Moverse en la dirección contraria a la que se está mirando
+            if self.rotate == 0:
+                delta_x = -self.velocidad
+            elif self.rotate == 180:
+                delta_x = self.velocidad
+            elif self.rotate == 90:
+                delta_y = -self.velocidad
+            elif self.rotate == 270:
+                delta_y = self.velocidad
+            
+            self.movimiento(delta_x, delta_y, obstaculos, todos_los_tanques)
+            return
+        # --- FIN DEL BLOQUE ---
+        # 2. CALCULAR MOVIMIENTO IDEAL Y EVASIÓN
+        delta_x, delta_y = 0, 0
+        dx_ideal, dy_ideal = 0, 0
         
+        # Solo nos movemos si no estamos ya muy cerca del objetivo
+        if math.sqrt((self.forma.centerx - objetivo_movimiento.centerx)**2 + (self.forma.centery - objetivo_movimiento.centery)**2) > self.forma.width:
+            # Calcular dirección ideal (sin diagonales)
+            if abs(self.forma.centerx - objetivo_movimiento.centerx) > abs(self.forma.centery - objetivo_movimiento.centery):
+                if self.forma.centerx > objetivo_movimiento.centerx: dx_ideal = -self.velocidad
+                elif self.forma.centerx < objetivo_movimiento.centerx: dx_ideal = self.velocidad
+            elif abs(self.forma.centery - objetivo_movimiento.centery) > 0:
+                if self.forma.centery > objetivo_movimiento.centery: dy_ideal = -self.velocidad
+                elif self.forma.centery < objetivo_movimiento.centery: dy_ideal = self.velocidad
         
-    
-    #Atacar al tanque del jugador
-    def update_cañon_enemigo(self, tanque, cañon_tanque, obstaculos_tiles, arbustos, tanque_jugador, grupo_balas_enemigas):
-        clipped_line = ()
+            # --- INICIO DE LA LÓGICA DE EVASIÓN ---
+            sensor = self.forma.copy()
+            sensor.move_ip(dx_ideal * 2, dy_ideal * 2)
+            
+            obstaculo_en_frente = next((obs for obs in obstaculos if sensor.colliderect(obs[1])), None)
+            
+            if obstaculo_en_frente:
+                # Si hay un muro en frente, intentar moverse en la dirección perpendicular
+                if dx_ideal != 0: # Si el bloqueo es horizontal, intentar mover vertical
+                    if self.forma.centery > objetivo_movimiento.centery: delta_y = -self.velocidad
+                    else: delta_y = self.velocidad
+                else: # Si el bloqueo es vertical, intentar mover horizontal
+                    if self.forma.centerx > objetivo_movimiento.centerx: delta_x = -self.velocidad
+                    else: delta_x = self.velocidad
+            else:
+                # Si el camino está libre, seguir la ruta ideal
+                delta_x, delta_y = dx_ideal, dy_ideal
+            # --- FIN DE LA LÓGICA DE EVASIÓN ---
 
-        #Hacer que persigan al tanque del jugador
-        for arbusto in arbustos:
-            if arbusto[1].colliderect(tanque_jugador.forma):
-                return  # El jugador está en arbusto, enemigo no lo ve
-        ##Rango de vision del tanque enemigo
-        distancia = math.sqrt(((self.forma.centerx - tanque_jugador.forma.centerx)**2) + ((self.forma.centery - tanque_jugador.forma.centery)**2))
-        ##Campo de vision del tanque enemigo
-        campo_vision = ((self.forma.centerx, self.forma.centery), (tanque_jugador.forma.centerx, tanque_jugador.forma.centery))
-        ##Comprobar si hay obstaculos en el campo de visión
-        for obstaculo in obstaculos_tiles:
-            if obstaculo[1].clipline(campo_vision):
-                clipped_line = obstaculo[1].clipline(campo_vision)
-                
-        if not clipped_line and distancia <= constantes.RANGO_DISPARO and tanque.disparo_cooldown < (pygame.time.get_ticks() - self.ultimo_ataque):
-            bala_enemiga = cañon_tanque.update(tanque, 2, True)
-            if bala_enemiga:
-                grupo_balas_enemigas.add(bala_enemiga)
-        
+        # 3. LÓGICA DE DISPARO
+        objetivo_disparo = None
+        if dist_jugador < constantes.RANGO_DISPARO and self.es_visible(jugador, arbustos, obstaculos):
+            objetivo_disparo = jugador.forma
         else:
-            bala_enemiga = cañon_tanque.update(tanque, 2, False)
-            if bala_enemiga:
-                grupo_balas_enemigas.add(bala_enemiga)
+            dist_fortaleza = math.sqrt((self.forma.centerx - fortaleza.rect.centerx)**2 + (self.forma.centery - fortaleza.rect.centery)**2)
+            if dist_fortaleza < constantes.RANGO_DISPARO and self.es_visible(fortaleza, [], obstaculos):
+                objetivo_disparo = fortaleza.rect
+
+        if objetivo_disparo and (pygame.time.get_ticks() - self.ultimo_ataque) >= self.disparo_cooldown:
+            dx_shot = objetivo_disparo.centerx - self.forma.centerx
+            dy_shot = objetivo_disparo.centery - self.forma.centery
+            if abs(dx_shot) > abs(dy_shot): self.rotate = 0 if dx_shot > 0 else 180
+            else: self.rotate = 90 if dy_shot > 0 else 270
+
+            bala = self.cañon.update(self, 2, True)
+            if bala:
+                balas_enemigas.add(bala)
+                self.ultimo_ataque = pygame.time.get_ticks()
+        
+        # 4. EVITAR ALIADOS antes del movimiento final
+        if delta_x != 0 or delta_y != 0:
+            sensor = self.forma.copy()
+            sensor.move_ip(delta_x, delta_y)
+            if any(t is not self and t.tipo_tanque >= 1 and sensor.colliderect(t.forma) for t in todos_los_tanques):
+                delta_x, delta_y = 0, 0 # Pausa para no chocar
+
+        # 5. EJECUTAR MOVIMIENTO
+        self.movimiento(delta_x, delta_y, obstaculos, todos_los_tanques)
     
     def update(self):
         if self.tipo_tanque == 0:

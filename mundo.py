@@ -25,6 +25,23 @@ class Mundo():
         self.posicion_spawn_jugador = None
         self.posicion_fortaleza = None
 
+    def crear_grid_navegacion(self):
+        """Crea una rejilla simple (0=libre, 1=muro) para el pathfinding,
+        calculando de forma precisa el área que ocupa cada obstáculo."""
+        self.grid_navegacion = [[0 for _ in range(constantes.COLUMNAS)] for _ in range(constantes.FILAS)]
+        
+        for obstaculo in self.obstaculos_tiles:
+            rect_obstaculo = obstaculo[1]
+            start_x = rect_obstaculo.left // constantes.TAMAÑO_REJILLA
+            end_x = (rect_obstaculo.right - 1) // constantes.TAMAÑO_REJILLA
+            start_y = rect_obstaculo.top // constantes.TAMAÑO_REJILLA
+            end_y = (rect_obstaculo.bottom - 1) // constantes.TAMAÑO_REJILLA
+
+            for y in range(start_y, end_y + 1):
+                for x in range(start_x, end_x + 1):
+                    if 0 <= x < constantes.COLUMNAS and 0 <= y < constantes.FILAS:
+                        self.grid_navegacion[y][x] = 1
+                        
     def generar_enemigos(self, dificultad, num_jugadores, animaciones_enemigos):
         """Prepara la lista de enemigos a generar según dificultad y jugadores, y spawnea los primeros."""
         # 1️⃣ Obtener configuración según dificultad y número de jugadores

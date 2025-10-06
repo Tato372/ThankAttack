@@ -122,6 +122,16 @@ def iniciar_partida(dificultad, num_jugadores):
         fy * constantes.TAMAÑO_REJILLA,
         imagen_fortaleza
     )
+    fortaleza_obstaculo = [
+        fortaleza.image,
+        fortaleza.rect,
+        fortaleza.rect.centerx,
+        fortaleza.rect.centery,
+        fortaleza.energia # La "vida" del obstáculo es la energía de la fortaleza
+    ]
+    mundo.obstaculos_tiles.append(fortaleza_obstaculo)
+    
+    mundo.crear_grid_navegacion()
 
     # Crear tanques enemigos
     for enemigo in mundo.lista_enemigos:
@@ -224,7 +234,7 @@ for x in range(constantes.TIPOS_TILES):
 
 ## Fortaleza
 imagen_fortaleza = pygame.image.load("assets//images//fortaleza//fortaleza.jpg") # Asegúrate que la ruta sea correcta
-imagen_fortaleza = pygame.transform.scale(imagen_fortaleza, (constantes.TAMAÑO_REJILLA * 5, constantes.TAMAÑO_REJILLA * 5)) # Hacemos que ocupe 5x5 tiles
+imagen_fortaleza = pygame.transform.scale(imagen_fortaleza, (constantes.TAMAÑO_REJILLA * 7, constantes.TAMAÑO_REJILLA * 7)) # Hacemos que ocupe 5x5 tiles
 
 ##Tanques
 ###Jugador
@@ -436,9 +446,8 @@ while run:
                     tanques.remove(tanque)
                     tanque_jugador.puntaje += 100
                 else:
-                    tanque.tanques_enemigos(posicion_pantalla, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, fortaleza, grupo_balas_enemigas, tanques, data_objetos)
-                    tanque.update_cañon_enemigo(tanque, tanque.cañon, mundo.obstaculos_tiles, mundo.arbustos, tanque_jugador, grupo_balas_enemigas)
-            
+                    tanque.actualizar_ia_pixel(tanque_jugador, fortaleza, mundo.obstaculos_tiles, tanques, mundo.arbustos, grupo_balas_enemigas)
+                    
             # Actualizar arma del jugador y balas
             bala = cañon_jugador.update(tanque_jugador, 1, False)
             if bala:
@@ -520,7 +529,7 @@ while run:
         
         # HUD
         vida_jugador()
-        dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 250, 50)
+        dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
         dibujar_texto(f"Puntaje: {tanque_jugador.puntaje}", fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190, 50)
         dibujar_texto(f"Vidas: {vidas_jugador}", fuente, constantes.VERDE, constantes.ANCHO_VENTANA - 165, 80)
         
