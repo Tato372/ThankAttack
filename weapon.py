@@ -75,7 +75,7 @@ class Bullet(pygame.sprite.Sprite):
         #Verificar si hay colision con un tanque
         for tanque in tanques:
             if tanque.forma.colliderect(self.rect):
-                daño = 10
+                daño = 50
                 posicion_daño = (tanque.forma)
                 tanque.energia -= daño
                 self.kill()

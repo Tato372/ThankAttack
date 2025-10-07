@@ -22,12 +22,16 @@ def dibujar_boton_retro(texto, rect, seleccionado=False):
         pygame.draw.rect(pantalla, constantes.VERDE, rect)
     elif texto == "Salir":
         pygame.draw.rect(pantalla, constantes.ROJO, rect)
-    elif texto == "Reiniciar":
-        pygame.draw.rect(pantalla, constantes.VERDE, rect)
-    elif texto == "Reiniciar":
+    elif texto == "Reiniciar" and rect == boton_reinicio:
         pygame.draw.rect(pantalla, constantes.ROJO, rect)
-    elif texto == "Salir al Menu":
+    elif texto == "Reiniciar":
         pygame.draw.rect(pantalla, constantes.VERDE, rect)
+    elif texto == "Menu Principal" and rect == boton_volver_menu:
+        pygame.draw.rect(pantalla, constantes.GRIS, rect)
+    elif texto == "Menu Principal":
+        pygame.draw.rect(pantalla, constantes.GRIS, rect)
+    elif texto == "Siguiente Dificultad":
+        pygame.draw.rect(pantalla, constantes.GRIS, rect)
     
     # Dibujar borde pixelado
     for i in range(3):  # grosor del borde
@@ -108,7 +112,7 @@ def iniciar_partida(dificultad, num_jugadores):
     tanque_jugador = Tanque(
         px * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
         py * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-        animaciones, 90, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
+        animaciones, 900, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
     )
     tanques.append(tanque_jugador)
     
@@ -338,12 +342,17 @@ texto_boton_jugar = fuente_inicio.render("Jugar", True, constantes.BLANCO)
 texto_boton_salir = fuente_inicio.render("Salir", True, constantes.BLANCO)
 ##Texto de victoria
 texto_victoria = fuente_victoria.render("Victoria", True, constantes.BLANCO)
+##Texto del boton volver al menú principal
+texto_volver_menu = fuente_reinicio.render("Menu Principal", True, constantes.BLANCO)
+texto_volver_menu_vic = fuente_reinicio.render("Menu Principal", True, constantes.BLANCO)
+##Texto del boton de siguiente dificultad
+texto_siguiente_dificultad = fuente_reinicio.render("Siguiente Dificultad", True, constantes.BLANCO)
 
 # Crear botones
 ## Botón de reinicio en el game over
-boton_reinicio = pygame.Rect(constantes.ANCHO_VENTANA/2 - 100, constantes.ALTO_VENTANA/2 + 100, 190, 50)
+boton_reinicio = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 260, constantes.ALTO_VENTANA // 2 + 100, 190, 50)
 ## Botón de reinicio en la victoria
-boton_reinicio_vic = pygame.Rect(constantes.ANCHO_VENTANA/2 - 100, constantes.ALTO_VENTANA/2 + 100, 190, 50)
+boton_reinicio_vic = pygame.Rect(constantes.ANCHO_VENTANA / 2 - 90, constantes.ALTO_VENTANA / 2 + 100, 190, 50)
 
 ## Botones del selector de dificultad
 botones_dificultad = []
@@ -363,7 +372,10 @@ for i, jug in enumerate(jugadores):
 boton_jugar = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 150, constantes.ALTO_VENTANA - 120, 140, 50)
 boton_salir = pygame.Rect(constantes.ANCHO_VENTANA // 2 + 10, constantes.ALTO_VENTANA - 120, 140, 50)
 
-    
+##Botones de volver al menú principal
+boton_volver_menu = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 20, constantes.ALTO_VENTANA // 2 + 100, 295, 50)
+boton_volver_menu_vic = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 430, constantes.ALTO_VENTANA // 2 + 100, 295, 50)
+
 #Definir variables de movimiento del tanque
 mover_arriba = False
 mover_abajo = False
@@ -551,7 +563,7 @@ while run:
                 )
             else:
                 # Pantalla de Game Over
-                game_over_image = pygame.image.load("assets//images//pantallas//pantalla_game_over.png")
+                game_over_image = pygame.image.load("assets//images//pantallas//pantalla_inicio.png")
                 game_over_image = escalar_img(game_over_image, constantes.ANCHO_VENTANA / game_over_image.get_width(), constantes.ALTO_VENTANA / game_over_image.get_height())
                 pantalla.blit(game_over_image, (0, 0))
                 overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA), pygame.SRCALPHA)
@@ -560,15 +572,32 @@ while run:
                 text_rect = game_over_text.get_rect(center=(constantes.ANCHO_VENTANA/2, constantes.ALTO_VENTANA/2))
                 pantalla.blit(game_over_text, text_rect)
                 dibujar_boton_retro("Reiniciar", boton_reinicio)
+                dibujar_boton_retro("Menu Principal", boton_volver_menu)
         
         if not tanques_enemigos and tanque_jugador.vivo:
             # Pantalla de Victoria
+            victory_image = pygame.image.load("assets//images//pantallas//pantalla_inicio.png")
+            victory_image = escalar_img(victory_image, constantes.ANCHO_VENTANA / victory_image.get_width(), constantes.ALTO_VENTANA / victory_image.get_height())
+            pantalla.blit(victory_image, (0, 0))
             overlay = pygame.Surface((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA), pygame.SRCALPHA)
-            overlay.fill((0, 255, 0, 128))
+            overlay.fill((0, 255, 0, 70))
             pantalla.blit(overlay, (0, 0))
             text_rect = texto_victoria.get_rect(center=(constantes.ANCHO_VENTANA/2, constantes.ALTO_VENTANA/2))
             pantalla.blit(texto_victoria, text_rect)
             dibujar_boton_retro("Reiniciar", boton_reinicio_vic)
+            dibujar_boton_retro("Menu Principal", boton_volver_menu_vic)
+            if dificultad_seleccionada == "Facil":
+                # Crear el boton de siguiente dificultad
+                boton_siguiente_dificultad = pygame.Rect(constantes.ANCHO_VENTANA // 2 + 140, constantes.ALTO_VENTANA // 2 + 100, 390, 50)
+                dibujar_boton_retro("Siguiente Dificultad", boton_siguiente_dificultad)
+            elif dificultad_seleccionada == "Intermedio":
+                # Crear el boton de siguiente dificultad
+                boton_siguiente_dificultad = pygame.Rect(constantes.ANCHO_VENTANA // 2 + 140, constantes.ALTO_VENTANA // 2 + 100, 390, 50)
+                dibujar_boton_retro("Siguiente Dificultad", boton_siguiente_dificultad)
+            elif dificultad_seleccionada == "Dificil" and jugadores_seleccionados == 2:
+                # Crear el boton de siguiente dificultad
+                boton_siguiente_dificultad = pygame.Rect(constantes.ANCHO_VENTANA // 2 + 140, constantes.ALTO_VENTANA // 2 + 100, 390, 50)
+                dibujar_boton_retro("Siguiente Dificultad", boton_siguiente_dificultad)
 
         # =================================================
         # SECCIÓN 6: MANEJO DE EVENTOS
@@ -597,6 +626,22 @@ while run:
                     cañon_jugador = Weapon(imagen_cañon, imagen_balas)
                 
                 if victoria and boton_reinicio_vic.collidepoint(event.pos):
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
+                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+                
+                if game_over and boton_volver_menu.collidepoint(event.pos):
+                    mostrar_inicio = True
+                    dificultad_seleccionada = "Facil"
+                    jugadores_seleccionados = 1
+                if victoria and boton_volver_menu_vic.collidepoint(event.pos):
+                    mostrar_inicio = True
+                    dificultad_seleccionada = "Facil"
+                    jugadores_seleccionados = 1
+                if victoria and boton_siguiente_dificultad.collidepoint(event.pos):
+                    if dificultad_seleccionada == "Facil":
+                        dificultad_seleccionada = "Intermedio"
+                    elif dificultad_seleccionada == "Intermedio":
+                        dificultad_seleccionada = "Dificil"
                     mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
                     cañon_jugador = Weapon(imagen_cañon, imagen_balas)
 
