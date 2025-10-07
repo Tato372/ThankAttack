@@ -96,7 +96,7 @@ TANQUE_STATS = {
         "cooldown_disparo": 1000,   # Disparo rápido
     },
     3: {  # Marrón - Tipo 3
-        "velocidad": 1.5,          # Rápido
+        "velocidad": 1.25,          # Rápido
         "vida": 40,
         "cooldown_disparo": 1000,   # Disparo rápido
     },
