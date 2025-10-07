@@ -18,6 +18,8 @@ net.start()
 net.join("JugadorPygame")
 input_seq = 0
 
+remote_players = {}
+
 pantalla = pygame.display.set_mode((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
 pygame.display.set_caption("Tank-Atackk")
 
@@ -463,7 +465,6 @@ mover_abajo = False
 mover_izquierda = False
 mover_derecha = False
 pressed = {"up":False, "down":False, "left":False, "right":False, "fire":False}
-remote_players = {}
 #Controlar framerate
 reloj = pygame.time.Clock()
 
@@ -679,41 +680,46 @@ while run:
                     tanques.append(enemigo)
             # --- FIN DE LÓGICA DE OLEADAS ---
 
-        #ACTUALIZAR EL ESTADO DESDE EL SERVIDOR
+        # ACTUALIZAR EL ESTADO DESDE EL SERVIDOR
         state = None
         for msg in net.poll():
             if msg["type"] == "snapshot":
                 state = msg["state"]
+                # Log básico para verificar que recibimos snapshots y el id asignado
+                print(f"[DEBUG-NET] snapshot recibida. player_id={net.player_id} players={len(state.get('players', []))}")
                 for p in state["players"]:
                     pid = p["id"]
                     if pid == net.player_id:
-                        # 1. CORRECCIÓN DEL CLIENTE (si se usa la predicción)
-                        # Sobreescribe la posición local con la posición oficial del servidor
+                        # Corrección del cliente: sincronizar posición/HP con el servidor
                         tanque_jugador.forma.centerx = p["x"]
                         tanque_jugador.forma.centery = p["y"]
                         tanque_jugador.energia = p.get("hp", tanque_jugador.energia)
-                        # Aquí, idealmente, se debe aplicar la *reconciliación*
-                        # del cliente si se está implementando corrección de lag
-                        # (por ahora, la sobrescritura directa es suficiente)
                     else:
-                    
-                        # ---> AÑADE ESTA LÍNEA AQUÍ <---
-                        print(f"[DEBUG] Datos recibidos para jugador remoto ID: {pid[:8]} en Pos: ({p['x']}, {p['y']})")
-                    
-                        # Actualizar o crear jugadores remotos
+                        # Depuración para saber qué datos llegan para remotos
+                        try:
+                            print(f"[DEBUG] Datos recibidos para jugador remoto ID: {pid[:8]} en Pos: ({p['x']}, {p['y']}) HP: {p.get('hp')}")
+                        except Exception:
+                            print("[DEBUG] Datos recibidos para jugador remoto (id desconocido o datos incompletos)")
+
+                        # Actualizar o crear jugadores remotos (ghosts)
                         if pid not in remote_players:
-                            # Se recomienda crear un sprite simple para el "fantasma" del jugador remoto
-                            ghost = Tanque(p["x"], p["y"], animaciones, 900, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
+                            # Crear ghost con una imagen/rect iniciales bien definidos
+                            ghost = Tanque(p["x"], p["y"], animaciones, p.get("hp", 900), 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
                             ghost.is_remote = True
+                            ghost.id = pid
+                            # Asegurarnos de que la imagen y el rect estén correctamente inicializados
+                            ghost.imagen = animaciones[0]
+                            ghost.forma = ghost.imagen.get_rect(center=(p["x"], p["y"]))
                             remote_players[pid] = ghost
+                            print(f"[DEBUG] Ghost creado para {pid[:8]}")
                         else:
                             ghost = remote_players[pid]
                             # Mover al fantasma a la posición del servidor
                             ghost.forma.centerx = p["x"]
                             ghost.forma.centery = p["y"]
-                            # Actualizar otras propiedades (HP, rotación, etc.)
-                            # En este ejemplo solo se actualiza la posición
-
+                            # Actualizar otras propiedades (HP, rotación, etc.) si vienen
+                            if "hp" in p:
+                                ghost.energia = p["hp"]
         if state:
             remote_ids = {p["id"] for p in state["players"]}
             # Eliminar jugadores que ya no están conectados
