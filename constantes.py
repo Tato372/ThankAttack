@@ -13,7 +13,7 @@ ESCALA_CORAZON = 1.75
 TAMAÑO_REJILLA = 32
 FILAS = 50
 COLUMNAS = 50
-ESCALA_POCION = 1.5
+ESCALA_BONUS = 1
 ESCALA_MONEDA = 1.25
 LIMITE_PANTALLA = 50
 MAPA_ANCHO = COLUMNAS * TAMAÑO_REJILLA
@@ -43,13 +43,33 @@ COLOR_TEXTO = (255, 255, 255)     # blanco
 
 #Otros
 FPS = 60
-VELOCIDAD = 7
-DISPARO_COOLDOWN = 0 # en milisegundos
+VELOCIDAD = 4
+DISPARO_COOLDOWN = 1000 # en milisegundos
 VELOCIDAD_BALA = 5
 TIPOS_TILES = 7
 RANGO_VISION = 4000
 RANGO_DISPARO = 500
 RANGO_AGGRO_JUGADOR = 500 # Distancia a la que el enemigo detecta al jugador
+# <-- CAMBIO: Constantes para los Tipos de Items -->
+ITEM_MONEDA = 0
+ITEM_DISPARO_POTENCIADO = 1
+ITEM_ESCUDO = 2
+ITEM_RELOJ = 3
+ITEM_BOMBA = 4
+ITEM_ESCUDO_FORTALEZA = 5
+ITEM_BOOST = 6
+ITEM_VIDA = 7
+BOOST = 6
+# <-- CAMBIO: Tiempos de duración de los bonus (en milisegundos) -->
+DURACION_BONUS = 15000  # 15 segundos para escudo, potenciador y boost
+DURACION_RELOJ = 10000  # 10 segundos
+DURACION_ESCUDO_FORTALEZA = 20000 # 20 segundos
+
+# <-- CAMBIO: Modificadores para el bonus "Boost" -->
+FACTOR_VELOCIDAD_BOOST = 1.5
+FACTOR_ESCALA_BOOST = 0.75 # Se reduce al 75% del tamaño original
+
+
 CONFIG_TANQUES = {
             1: {  # 1 jugador
                 "Facil":      {1: 11, 2: 11, 3: 6, 4: 3},

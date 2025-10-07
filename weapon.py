@@ -25,7 +25,7 @@ class Weapon():
         if tipo == 1:
         #Detectar el espacio para disparar
             if pygame.key.get_pressed()[pygame.K_SPACE] and self.disparada == False and (pygame.time.get_ticks() - self.ultimo_disparo) >= disparo_cooldown:
-                bala = Bullet(self.imagen_bala, tanque, self.angulo)
+                bala = Bullet(self.imagen_bala, tanque, self.angulo, tanque.potenciado_activo)
                 self.disparada = True
                 self.ultimo_disparo = pygame.time.get_ticks()
             
@@ -39,7 +39,7 @@ class Weapon():
             if en_rango:
                 tiempo_actual = pygame.time.get_ticks()
                 if tiempo_actual - self.ultimo_disparo >= tanque.disparo_cooldown:
-                    bala = Bullet(self.imagen_bala, tanque, self.angulo)
+                    bala = Bullet(self.imagen_bala, tanque, self.angulo, False)
                     self.ultimo_disparo = tiempo_actual  # reinicia el cooldown
                 return bala
 
@@ -55,7 +55,7 @@ class Weapon():
         #pygame.draw.rect(pantalla, constantes.ROJO, self.forma, 1)
         
 class Bullet(pygame.sprite.Sprite):
-    def __init__(self, image, tanque, angulo):
+    def __init__(self, image, tanque, angulo, potenciado):
         pygame.sprite.Sprite.__init__(self)
         self.imagen_original = image
         self.angulo = angulo
@@ -65,8 +65,11 @@ class Bullet(pygame.sprite.Sprite):
         #Calculo de la velocidad
         self.delta_x = math.cos(math.radians(self.angulo)) * constantes.VELOCIDAD_BALA
         self.delta_y = math.sin(math.radians(-self.angulo)) * constantes.VELOCIDAD_BALA
+        # <-- CAMBIO: El daño se define al crear la bala -->
+        self.daño_base = 10
+        self.daño = self.daño_base * 2 if potenciado else self.daño_base
         
-    def update(self, tanques, obstaculos_tiles):
+    def update(self, tanques, obstaculos_tiles, fortaleza_protegida=False):
         daño = 0
         posicion_daño = None
         self.rect.x += self.delta_x
@@ -75,23 +78,29 @@ class Bullet(pygame.sprite.Sprite):
         #Verificar si hay colision con un tanque
         for tanque in tanques:
             if tanque.forma.colliderect(self.rect):
-                daño = 50
-                posicion_daño = (tanque.forma)
-                tanque.energia -= daño
-                self.kill()
-                break
+                if tanque.escudo_activo:
+                    self.kill()
+                    break
+                else:
+                    daño_aplicado = self.daño
+                    posicion_daño = tanque.forma.center
+                    tanque.energia -= daño_aplicado
+                    self.kill()
+                    break
         
         #Verificar si hay colision con un obstaculo
-        for obstaculo in obstaculos_tiles:
-            if obstaculo[1].colliderect(self.rect):
-                # Si el obstáculo es destructible
-                if obstaculo[4] > 0:
-                    obstaculo[4] -= 1  # Restar 1 bala
-                    if obstaculo[4] == 0:
-                        obstaculos_tiles.remove(obstaculo)
-                # Si es indestructible, no hacemos nada más
-                self.kill()  # La bala siempre se destruye al impactar
-                break
+        if not daño_aplicado:
+            for obstaculo in obstaculos_tiles:
+                if obstaculo[1].colliderect(self.rect):
+                    if fortaleza_protegida and len(obstaculo) > 5 and obstaculo[5]:
+                         self.kill()
+                         break
+                    if obstaculo[4] > 0:
+                        obstaculo[4] -= 1
+                        if obstaculo[4] == 0:
+                            obstaculos_tiles.remove(obstaculo)
+                    self.kill()
+                    break
         
         return daño, posicion_daño
 

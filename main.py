@@ -8,6 +8,7 @@ from items import Item
 from mundo import Mundo
 import os
 import csv
+import random 
 
 pygame.init()
 
@@ -134,9 +135,19 @@ def iniciar_partida(dificultad, num_jugadores):
         fortaleza.energia # La "vida" del obstáculo es la energía de la fortaleza
     ]
     mundo.obstaculos_tiles.append(fortaleza_obstaculo)
-    
-    mundo.crear_grid_navegacion()
+    # Se ajusta para que coincida con la nueva estructura de obstaculos
+    muros_originales = {}
+    for i, obs in enumerate(mundo.obstaculos_tiles):
+        if len(obs) > 5 and obs[5]: # Si es un muro de fortaleza
+             muros_originales[i] = obs[0].copy() # Guardamos la imagen original del ladrillo
 
+    mundo.crear_grid_navegacion()
+    for enemigo in mundo.lista_enemigos:
+        enemigo.animacion_muerte = animacion_muerte
+        enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
+        tanques_enemigos.append(enemigo)
+        tanques.append(enemigo)
+    
     # Crear tanques enemigos
     for enemigo in mundo.lista_enemigos:
         enemigo.animacion_muerte = animacion_muerte
@@ -149,7 +160,8 @@ def iniciar_partida(dificultad, num_jugadores):
         grupo_items.add(item)
     
     # Devolver todos los objetos creados
-    return mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items
+    return mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales
+
 
 ##Funcione para agregar y quitar la dificultad pesadilla si son 2 jugadores
 def agregar_dificultad_pesadilla():
@@ -202,12 +214,40 @@ def pantalla_inicio():
     dibujar_boton_retro("Salir", boton_salir)
     
     pygame.display.update()
+
+# <-- CAMBIO: Nueva función para mostrar el HUD de los bonus -->
+def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
+    tiempo_actual = pygame.time.get_ticks()
+    y_pos = 120
+    
+    if tanque.escudo_activo:
+        tiempo_restante = (tanque.escudo_tiempo_final - tiempo_actual) // 1000
+        dibujar_texto(f"Escudo: {tiempo_restante}s", fuente, constantes.AZUL_CIELO_VIVO, 10, y_pos)
+        y_pos += 30
+    if tanque.potenciado_activo:
+        tiempo_restante = (tanque.potenciado_tiempo_final - tiempo_actual) // 1000
+        dibujar_texto(f"Doble Daño: {tiempo_restante}s", fuente, constantes.ROJO, 10, y_pos)
+        y_pos += 30
+    if tanque.boost_activo:
+        tiempo_restante = (tanque.boost_tiempo_final - tiempo_actual) // 1000
+        dibujar_texto(f"Boost: {tiempo_restante}s", fuente, constantes.AMARILLO, 10, y_pos)
+        y_pos += 30
+    if fortaleza_protegida_hasta > tiempo_actual:
+        tiempo_restante = (fortaleza_protegida_hasta - tiempo_actual) // 1000
+        dibujar_texto(f"Escudo Fortaleza: {tiempo_restante}s", fuente, constantes.GRIS, 10, y_pos)
+        y_pos += 30
     
 #Variables
 nivel = 1
 oleada_actual = 1
 tanques = []
 vidas_jugador = 3
+muros_originales = {}
+tiempo_inicio_partida = 0
+# <-- CAMBIO: Variables para la generación de bonus -->
+ultimo_spawn_convencional = pygame.time.get_ticks()
+ultimo_spawn_especial = pygame.time.get_ticks()
+fortaleza_protegida_hasta = 0
 
 dificultades = ["Facil", "Intermedio", "Dificil"]
 dificultad_actual = 0  # índice de la dificultad seleccionada
@@ -287,9 +327,35 @@ corazon_completo = pygame.image.load("assets//images//items//corazon_completo.pn
 corazon_completo = escalar_img(corazon_completo, constantes.ESCALA_CORAZON, constantes.ESCALA_CORAZON)
 
 ##Items
-###Pocion
-pocion = pygame.image.load("assets//images//items//pocion.png")
-pocion = escalar_img(pocion, constantes.ESCALA_POCION, constantes.ESCALA_POCION)
+###Convencionales
+####Power up
+power_up = pygame.image.load("assets//images//items//convencionales//power_up//power_up.png")
+power_up = escalar_img(power_up, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+####Escudo
+escudo = pygame.image.load("assets//images//items//convencionales//escudo//escudo.png")
+escudo = escalar_img(escudo, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+####Reloj
+reloj = pygame.image.load("assets//images//items//convencionales//reloj//reloj.png")
+reloj = escalar_img(reloj, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+###Especiales
+####Bomba
+bomba = pygame.image.load("assets//images//items//especiales//bomba//bomba.png")
+bomba = escalar_img(bomba, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+####Escudo para la fortaleza
+escudo_fortaleza = pygame.image.load("assets//images//items//especiales//escudo_fortaleza//escudo_fortaleza.png")
+escudo_fortaleza = escalar_img(escudo_fortaleza, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+####Boost
+boost = pygame.image.load("assets//images//items//especiales//boost//boost.png")
+boost = escalar_img(boost, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
+
+####Vida
+vida = pygame.image.load("assets//images//items//especiales//vida//vida.png")
+vida = escalar_img(vida, constantes.ESCALA_BONUS, constantes.ESCALA_BONUS)
 
 ###Moneda
 imagenes_moneda= []
@@ -301,7 +367,16 @@ for i in range(num_moneda_img):
     img_moneda = escalar_img(img_moneda, constantes.ESCALA_MONEDA, constantes.ESCALA_MONEDA)
     imagenes_moneda.append(img_moneda)
     
-imagenes_items = [imagenes_moneda, [pocion]] 
+imagenes_items = [
+    imagenes_moneda,          # 0: Moneda
+    [power_up],               # 1: Disparo Potenciado
+    [escudo],                 # 2: Escudo
+    [reloj],                  # 3: Reloj
+    [bomba],                  # 4: Bomba
+    [escudo_fortaleza],       # 5: Escudo Fortaleza
+    [boost],                  # 6: Boost
+    [vida]                    # 7: Vida
+]
 
 #Lista que representa y almacena los datos del mundo
 data_suelo = []
@@ -408,10 +483,13 @@ while run:
                 # --- Botones de Jugar / Salir ---
                 if boton_jugar.collidepoint(event.pos):
                     mostrar_inicio = False
+                    # <-- CAMBIO: Reiniciar timers y estado de la fortaleza -->
+                    ultimo_spawn_convencional = pygame.time.get_ticks()
+                    ultimo_spawn_especial = pygame.time.get_ticks()
+                    fortaleza_protegida_hasta = 0
+                    tiempo_inicio_partida = pygame.time.get_ticks()
                     # ¡AQUÍ INICIAMOS LA PARTIDA CON LOS VALORES SELECCIONADOS!
-                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
-                    # Creamos el cañón del jugador aquí también
-                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
                 if boton_salir.collidepoint(event.pos):
                     run = False 
 
@@ -423,6 +501,8 @@ while run:
         # SECCIÓN 1: ACTUALIZAR LÓGICA DEL JUEGO
         # =================================================
         if tanque_jugador.vivo:
+            # <-- CAMBIO: Actualizar estado del tanque del jugador (incluye efectos de bonus) -->
+            tanque_jugador.update()
             # Calcular movimiento del jugador
             delta_x = 0
             delta_y = 0
@@ -459,6 +539,39 @@ while run:
                     tanque_jugador.puntaje += 100
                 else:
                     tanque.actualizar_ia_pixel(tanque_jugador, fortaleza, mundo.obstaculos_tiles, tanques, mundo.arbustos, grupo_balas_enemigas)
+            
+            # <-- CAMBIO: Lógica de generación de bonus por tiempo -->
+            tiempo_actual = pygame.time.get_ticks()
+            # Bonus convencionales (cada 60 segundos)
+            if tiempo_actual - ultimo_spawn_convencional > 60000:
+                ultimo_spawn_convencional = tiempo_actual
+                if mundo.tiles_libres:
+                    tipo_item = random.choice([
+                        constantes.ITEM_ESCUDO,
+                        constantes.ITEM_DISPARO_POTENCIADO,
+                        constantes.ITEM_RELOJ
+                    ])
+                    x_tile, y_tile = random.choice(mundo.tiles_libres)
+                    item = Item(x_tile * constantes.TAMAÑO_REJILLA + 16,
+                                y_tile * constantes.TAMAÑO_REJILLA + 16,
+                                tipo_item, imagenes_items[tipo_item])
+                    grupo_items.add(item)
+            
+            # Bonus especiales (cada 2 minutos, 50% probabilidad)
+            if tiempo_actual - ultimo_spawn_especial > 120000:
+                ultimo_spawn_especial = tiempo_actual
+                if random.random() < 0.5 and mundo.tiles_libres:
+                    tipo_item = random.choice([
+                        constantes.ITEM_BOMBA,
+                        constantes.ITEM_ESCUDO_FORTALEZA,
+                        constantes.ITEM_VIDA,
+                        constantes.ITEM_BOOST
+                    ])
+                    x_tile, y_tile = random.choice(mundo.tiles_libres)
+                    item = Item(x_tile * constantes.TAMAÑO_REJILLA + 16,
+                                y_tile * constantes.TAMAÑO_REJILLA + 16,
+                                tipo_item, imagenes_items[tipo_item])
+                    grupo_items.add(item)
                     
             # Actualizar arma del jugador y balas
             bala = cañon_jugador.update(tanque_jugador, 1, False)
@@ -466,7 +579,7 @@ while run:
                 grupo_balas.add(bala)
             
             for bala in grupo_balas:
-                daño, posicion_daño = bala.update(tanques_enemigos, mundo.obstaculos_tiles)
+                daño, posicion_daño = bala.update(tanques_enemigos, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
                 if daño:
                     texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
                     grupo_textos_daño.add(texto_daño)
@@ -476,13 +589,67 @@ while run:
                 if fortaleza.rect.colliderect(bala_enemiga.rect):
                     fortaleza.energia -= 10
                     bala_enemiga.kill()
-                daño, posicion_daño = bala_enemiga.update([tanque_jugador], mundo.obstaculos_tiles)
+                daño, posicion_daño = bala_enemiga.update([tanque_jugador], mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
                 if daño:
                     texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
                     grupo_textos_daño.add(texto_daño)
 
+            # <-- CAMBIO: Lógica de recolección de items -->
+            for item in grupo_items:
+                if item.rect.colliderect(tanque_jugador.forma):
+                    tipo = item.tipo_item
+                    item.kill()
+
+                    if tipo == constantes.ITEM_MONEDA:
+                        tanque_jugador.puntaje += 20
+                    elif tipo == constantes.ITEM_VIDA:
+                        vidas_jugador += 1
+                        tanque_jugador.energia = 30
+                    elif tipo == constantes.ITEM_ESCUDO:
+                        tanque_jugador.escudo_activo = True
+                        tanque_jugador.escudo_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
+                    elif tipo == constantes.ITEM_DISPARO_POTENCIADO:
+                        tanque_jugador.potenciado_activo = True
+                        tanque_jugador.potenciado_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
+                    elif tipo == constantes.ITEM_BOOST:
+                        if not tanque_jugador.boost_activo: # Evitar acumular el efecto
+                            tanque_jugador.boost_activo = True
+                            tanque_jugador.boost_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
+                            tanque_jugador.velocidad *= constantes.FACTOR_VELOCIDAD_BOOST
+                            # Reducir tamaño
+                            centro = tanque_jugador.forma.center
+                            nuevas_animaciones = []
+                            for img in tanque_jugador.animaciones_originales:
+                                w, h = img.get_size()
+                                nueva_img = pygame.transform.scale(img, (int(w * constantes.FACTOR_ESCALA_BOOST), int(h * constantes.FACTOR_ESCALA_BOOST)))
+                                nuevas_animaciones.append(nueva_img)
+                            tanque_jugador.animaciones = nuevas_animaciones
+                            tanque_jugador.imagen = nuevas_animaciones[tanque_jugador.frame_index]
+                            tanque_jugador.forma = tanque_jugador.imagen.get_rect(center=centro)
+                    elif tipo == constantes.ITEM_BOMBA:
+                        for enemigo in list(tanques_enemigos):
+                            enemigo.energia = 0 # Esto activará su animación de muerte
+                    elif tipo == constantes.ITEM_RELOJ:
+                        for enemigo in tanques_enemigos:
+                            enemigo.ralentizado = True
+                            enemigo.ralentizado_tiempo_final = tiempo_actual + constantes.DURACION_RELOJ
+                    elif tipo == constantes.ITEM_ESCUDO_FORTALEZA:
+                        fortaleza_protegida_hasta = tiempo_actual + constantes.DURACION_ESCUDO_FORTALEZA
+                        # Cambiar la imagen de los muros de la fortaleza a metal
+                        for obs in mundo.obstaculos_tiles:
+                            if len(obs) > 5 and obs[5]: # Si es un muro de fortaleza
+                                obs[0] = lista_tiles[5] # Imagen de metal
+            
+            # <-- CAMBIO: Restaurar muros de fortaleza cuando el escudo expira -->
+            if fortaleza_protegida_hasta > 0 and tiempo_actual > fortaleza_protegida_hasta:
+                fortaleza_protegida_hasta = 0
+                for i, obs in enumerate(mundo.obstaculos_tiles):
+                    if len(obs) > 5 and obs[5]: # Si es un muro de fortaleza
+                         if i in muros_originales:
+                            obs[0] = muros_originales[i]
+
             # Actualizar items y textos de daño <-- MOVIDOS AQUÍ
-            grupo_items.update(posicion_pantalla, tanque_jugador)
+            grupo_items.update()
             grupo_textos_daño.update(posicion_pantalla)
             
             # --- INICIO DE LÓGICA DE OLEADAS (REFINADA) ---
@@ -544,6 +711,17 @@ while run:
         dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
         dibujar_texto(f"Puntaje: {tanque_jugador.puntaje}", fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190, 50)
         dibujar_texto(f"Vidas: {vidas_jugador}", fuente, constantes.VERDE, constantes.ANCHO_VENTANA - 165, 80)
+        # <-- CAMBIO: Dibujar el nuevo HUD de bonus -->
+        dibujar_hud_bonus(tanque_jugador, fortaleza_protegida_hasta)
+        # <-- AÑADE ESTE BLOQUE PARA EL CONTADOR -->
+        if not mostrar_inicio:
+            # Calcular tiempo transcurrido
+            tiempo_transcurrido = (pygame.time.get_ticks() - tiempo_inicio_partida) // 1000
+            minutos = tiempo_transcurrido // 60
+            segundos = tiempo_transcurrido % 60
+            texto_tiempo = f"{minutos:02}:{segundos:02}"
+            # Dibujar en el centro superior
+            dibujar_texto(texto_tiempo, fuente, constantes.BLANCO, constantes.ANCHO_VENTANA / 2 - 40, 10)
         
         # =================================================
         # SECCIÓN 5: LÓGICA DE FIN DE PARTIDA
@@ -622,12 +800,18 @@ while run:
                 victoria = not tanques_enemigos and tanque_jugador.vivo
                 
                 if game_over and boton_reinicio.collidepoint(event.pos):
-                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
-                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+                    ultimo_spawn_convencional = pygame.time.get_ticks()
+                    ultimo_spawn_especial = pygame.time.get_ticks()
+                    fortaleza_protegida_hasta = 0
+                    tiempo_inicio_partida = pygame.time.get_ticks()
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = resetear_mundo()
                 
                 if victoria and boton_reinicio_vic.collidepoint(event.pos):
-                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
-                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
+                    ultimo_spawn_convencional = pygame.time.get_ticks()
+                    ultimo_spawn_especial = pygame.time.get_ticks()
+                    fortaleza_protegida_hasta = 0
+                    tiempo_inicio_partida = pygame.time.get_ticks()
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = resetear_mundo()
                 
                 if game_over and boton_volver_menu.collidepoint(event.pos):
                     mostrar_inicio = True
@@ -638,13 +822,15 @@ while run:
                     dificultad_seleccionada = "Facil"
                     jugadores_seleccionados = 1
                 if victoria and boton_siguiente_dificultad.collidepoint(event.pos):
+                    ultimo_spawn_convencional = pygame.time.get_ticks()
+                    ultimo_spawn_especial = pygame.time.get_ticks()
+                    fortaleza_protegida_hasta = 0
+                    tiempo_inicio_partida = pygame.time.get_ticks()
                     if dificultad_seleccionada == "Facil":
                         dificultad_seleccionada = "Intermedio"
                     elif dificultad_seleccionada == "Intermedio":
                         dificultad_seleccionada = "Dificil"
-                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items = resetear_mundo()
-                    cañon_jugador = Weapon(imagen_cañon, imagen_balas)
-
+                    mundo, tanque_jugador, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = resetear_mundo()
         pygame.display.update()
 
 pygame.quit()

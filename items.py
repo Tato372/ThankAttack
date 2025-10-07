@@ -1,5 +1,5 @@
 import pygame.sprite
-
+import constantes
 
 class Item(pygame.sprite.Sprite):
     def __init__(self, x, y, tipo_item, lista_animaciones):
@@ -12,19 +12,8 @@ class Item(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
         
-    def update(self, posicion_pantalla, tanque):
-        #Comprobar la colision entre el personaje y el item
-        if self.rect.colliderect(tanque.forma):
-            #Si son monedas
-            if self.tipo_item == 0:
-                tanque.puntaje += 20
-            #Si son pociones
-            elif self.tipo_item == 1:
-                tanque.energia += 30
-                if tanque.energia > 90:
-                    tanque.energia = 90
-            self.kill()
-            
+    def update(self):
+        # Solo se encarga de la animación
         cooldown_animacion = 200
         self.image = self.lista_animaciones[self.frame_index]
         if pygame.time.get_ticks() - self.update_time >= cooldown_animacion:

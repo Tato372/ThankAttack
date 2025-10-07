@@ -28,6 +28,17 @@ class Tanque():
         self.disparo_cooldown = disparo_cooldown
         self.velocidad = velocidad
         self.modo_evasion = 0
+        # <-- CAMBIO: Atributos para gestionar efectos de bonus -->
+        # Para el jugador
+        self.escudo_activo = False
+        self.escudo_tiempo_final = 0
+        self.potenciado_activo = False
+        self.potenciado_tiempo_final = 0
+        self.boost_activo = False
+        self.boost_tiempo_final = 0
+        # Para enemigos (afectados por el reloj)
+        self.ralentizado = False
+        self.ralentizado_tiempo_final = 0
         
     def es_visible(self, objetivo, arbustos, obstaculos):
         """Comprueba si un objetivo es visible, considerando arbustos y muros."""
@@ -63,11 +74,13 @@ class Tanque():
         if self.explosion:
             return
 
+        # <-- CAMBIO: Ajustar velocidad de movimiento Y de disparo si está ralentizado -->
+        velocidad_actual = self.velocidad / 2 if self.ralentizado else self.velocidad
+        cooldown_actual = self.disparo_cooldown * 2 if self.ralentizado else self.disparo_cooldown
+
         # 1. DECIDIR OBJETIVO DE MOVIMIENTO
         objetivo_movimiento = fortaleza.rect # REGLA 1: Por defecto, ir a la fortaleza
-        
         dist_jugador = math.sqrt((self.forma.centerx - jugador.forma.centerx)**2 + (self.forma.centery - jugador.forma.centery)**2)
-        
         # REGLA 2 Y 3: Si el jugador es visible y está en rango, cambiar de objetivo
         if dist_jugador < constantes.RANGO_AGGRO_JUGADOR and self.es_visible(jugador, arbustos, obstaculos):
             objetivo_movimiento = jugador.forma
@@ -143,7 +156,7 @@ class Tanque():
             if dist_fortaleza < constantes.RANGO_DISPARO and self.es_visible(fortaleza, [], obstaculos):
                 objetivo_disparo = fortaleza.rect
 
-        if objetivo_disparo and (pygame.time.get_ticks() - self.ultimo_ataque) >= self.disparo_cooldown:
+        if objetivo_disparo and (pygame.time.get_ticks() - self.ultimo_ataque) >= cooldown_actual:
             dx_shot = objetivo_disparo.centerx - self.forma.centerx
             dy_shot = objetivo_disparo.centery - self.forma.centery
             if abs(dx_shot) > abs(dy_shot): self.rotate = 0 if dx_shot > 0 else 180
@@ -164,7 +177,31 @@ class Tanque():
         # 5. EJECUTAR MOVIMIENTO
         self.movimiento(delta_x, delta_y, obstaculos, todos_los_tanques)
     
+    # <-- CAMBIO: Nuevo método para actualizar los efectos de los bonus -->
+    def actualizar_efectos_bonus(self):
+        tiempo_actual = pygame.time.get_ticks()
+        # Escudo del jugador
+        if self.escudo_activo and tiempo_actual > self.escudo_tiempo_final:
+            self.escudo_activo = False
+        # Disparo potenciado del jugador
+        if self.potenciado_activo and tiempo_actual > self.potenciado_tiempo_final:
+            self.potenciado_activo = False
+        # Boost del jugador
+        if self.boost_activo and tiempo_actual > self.boost_tiempo_final:
+            self.boost_activo = False
+            self.velocidad = self.velocidad_original
+            # Restaurar tamaño
+            centro = self.forma.center
+            self.animaciones = self.animaciones_originales
+            self.imagen = self.animaciones[self.frame_index]
+            self.forma = self.imagen.get_rect(center=centro)
+        # Ralentización del enemigo
+        if self.ralentizado and tiempo_actual > self.ralentizado_tiempo_final:
+            self.ralentizado = False
+            
     def update(self):
+        self.actualizar_efectos_bonus()
+        
         if self.tipo_tanque == 0:
             if self.energia <= 0:
                 self.energia = 0
@@ -212,6 +249,12 @@ class Tanque():
             self.forma.centery - posicion_pantalla[1]
         ))
         pantalla.blit(imagen_rotada, rect_rotado)
+        
+        # <-- CAMBIO: Dibujar un efecto visual para el escudo -->
+        if self.escudo_activo:
+            escudo_surf = pygame.Surface(rect_rotado.size, pygame.SRCALPHA)
+            pygame.draw.circle(escudo_surf, (100, 100, 255, 90), (rect_rotado.width // 2, rect_rotado.height // 2), rect_rotado.width // 2)
+            pantalla.blit(escudo_surf, rect_rotado.topleft)
 
         # --- Dibujar el cañón si existe ---
         if self.cañon:

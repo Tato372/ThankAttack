@@ -24,6 +24,7 @@ class Mundo():
         self.posiciones_spawn_enemigos = []
         self.posicion_spawn_jugador = None
         self.posicion_fortaleza = None
+        self.tiles_libres = []
 
     def crear_grid_navegacion(self):
         """Crea una rejilla simple (0=libre, 1=muro) para el pathfinding,
@@ -109,11 +110,11 @@ class Mundo():
                 self.map_tiles.append([image, rect, rect.centerx, rect.centery])
 
         # --- Objetos, Spawns y Fortaleza ---
-        tiles_libres = []
+        self.tiles_libres = []
         for y, row in enumerate(data_objetos):
             for x, tile in enumerate(row):
                 if tile == -1:
-                    tiles_libres.append((x, y)) # Guardamos los tiles vacíos por si los necesitamos
+                    self.tiles_libres.append((x, y)) # Guardamos los tiles vacíos por si los necesitamos
                     continue
                 
                 # --- Guardar posiciones de spawn ---
@@ -125,6 +126,21 @@ class Mundo():
                     continue
                 elif tile == fortaleza_tile:
                     self.posicion_fortaleza = (x, y)
+                    # <-- CAMBIO: Identificar los muros de la fortaleza con un valor especial -->
+                    # Creamos un rectángulo que rodea la fortaleza para añadirle muros
+                    fx_tile, fy_tile = self.posicion_fortaleza
+                    # Ejemplo simple: colocar muros de ladrillo alrededor (puedes ajustarlo)
+                    muros_fortaleza_pos = [
+                        (fx_tile-1, fy_tile-1), (fx_tile, fy_tile-1), (fx_tile+1, fy_tile-1),
+                        (fx_tile-1, fy_tile),                       (fx_tile+1, fy_tile),
+                        (fx_tile-1, fy_tile+1), (fx_tile, fy_tile+1), (fx_tile+1, fy_tile+1),
+                    ]
+                    for mx, my in muros_fortaleza_pos:
+                        if 0 <= mx < constantes.COLUMNAS and 0 <= my < constantes.FILAS and data_objetos[my][mx] == -1:
+                            img_muro = lista_tiles[4] # Ladrillo
+                            rect_muro = img_muro.get_rect(center=(mx * constantes.TAMAÑO_REJILLA + 16, my * constantes.TAMAÑO_REJILLA + 16))
+                            # Usamos [img, rect, cx, cy, vida, es_muro_fortaleza]
+                            self.obstaculos_tiles.append([img_muro, rect_muro, rect_muro.centerx, rect_muro.centery, 2, True])
                     continue
                 
                 # --- Procesar objetos normales (ladrillos, metal, etc.) ---
@@ -142,26 +158,12 @@ class Mundo():
                 elif tile in arbustos:
                     self.arbustos.append(tile_data)
         
-        # Generar la lista de enemigos (ya no necesita tiles_libres)
+        # Generar la lista de enemigos (ya no necesita self.tiles_libres)
         self.generar_enemigos(
             dificultad_seleccionada,
             jugadores_seleccionados,
             animaciones_enemigos
         )
-
-        # --- Items aleatorios ---
-        num_items = 10
-        for _ in range(num_items):
-            if not tiles_libres:
-                break
-            x, y = random.choice(tiles_libres)
-            tiles_libres.remove((x, y))
-            tipo_item = random.choice([0, 1])
-            item = Item(x * constantes.TAMAÑO_REJILLA + 16,
-                        y * constantes.TAMAÑO_REJILLA + 16,
-                        tipo_item,
-                        imagenes_items[tipo_item])
-            self.lista_items.append(item)
     
     def update(self, posicion_pantalla):
         for tile in self.map_tiles:
