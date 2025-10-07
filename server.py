@@ -75,9 +75,9 @@ class GameRoom:
                     vx = 0
                     vy = 0
                     if keys.get("up"): vy = -speed
-                    if keys.get("down"): vy = speed
-                    if keys.get("left"): vx = -speed
-                    if keys.get("right"): vx = speed
+                    elif keys.get("down"): vy = speed
+                    elif keys.get("left"): vx = -speed
+                    elif keys.get("right"): vx = speed
                     
                     # Aplicar el movimiento
                     p.x += vx

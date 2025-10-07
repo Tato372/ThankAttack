@@ -696,6 +696,10 @@ while run:
                         # del cliente si se está implementando corrección de lag
                         # (por ahora, la sobrescritura directa es suficiente)
                     else:
+                    
+                        # ---> AÑADE ESTA LÍNEA AQUÍ <---
+                        print(f"[DEBUG] Datos recibidos para jugador remoto ID: {pid[:8]} en Pos: ({p['x']}, {p['y']})")
+                    
                         # Actualizar o crear jugadores remotos
                         if pid not in remote_players:
                             # Se recomienda crear un sprite simple para el "fantasma" del jugador remoto
@@ -750,8 +754,12 @@ while run:
                 pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
 
         #Dibujar jugadores remotos
+        # main.py
+
+        #Dibujar jugadores remotos
         for ghost in remote_players.values():
-            ghost.dibujar(pantalla, posicion_pantalla)           
+            print(f"[DEBUG-DIBUJO] Intentando dibujar a {ghost.id[:8]} en Coords: ({ghost.forma.centerx}, {ghost.forma.centery}) con Camara en: ({int(posicion_pantalla[0])}, {int(posicion_pantalla[1])})")
+            ghost.dibujar(pantalla, posicion_pantalla)          
 
         # Balas y textos
         for bala in grupo_balas:
