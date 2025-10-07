@@ -57,11 +57,22 @@ class GameRoom:
                     inp = p.inputs.pop(0)
                     # inp = {"keys": {...}, "seq": ..., "t":...}
                     keys = inp.get("keys", {})
-                    speed = 2
-                    if keys.get("up"): p.y -= speed
-                    if keys.get("down"): p.y += speed
-                    if keys.get("left"): p.x -= speed
-                    if keys.get("right"): p.x += speed
+                    # La velocidad del servidor DEBE coincidir con la del cliente
+                    # Si constantes.VELOCIDAD es 3 en el cliente, usa 3 aquí.
+                    speed = 4  # Ajusta este valor
+                    
+                    # Calcular el movimiento
+                    vx = 0
+                    vy = 0
+                    if keys.get("up"): vy = -speed
+                    if keys.get("down"): vy = speed
+                    if keys.get("left"): vx = -speed
+                    if keys.get("right"): vx = speed
+                    
+                    # Aplicar el movimiento (podrías añadir aquí la detección de colisiones)
+                    p.x += vx
+                    p.y += vy
+                    
                     # ... disparo se maneja aquí
                     p.last_input_seq = inp.get("seq", p.last_input_seq)
             # Actualizar otras cosas (IA enemigos, bullets)

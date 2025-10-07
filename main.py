@@ -508,11 +508,15 @@ while run:
         # SECCIÓN 1: ACTUALIZAR LÓGICA DEL JUEGO
         # =================================================
         if tanque_jugador.vivo:
-            # <-- CAMBIO: Actualizar estado del tanque del jugador (incluye efectos de bonus) -->
-            tanque_jugador.update()
-            # Calcular movimiento del jugador
+            input_seq += 1
+            net.send_input(input_seq, pressed)
             delta_x = 0
             delta_y = 0
+            if pressed["up"]: delta_y = -constantes.VELOCIDAD
+            elif pressed["down"]: delta_y = constantes.VELOCIDAD
+            elif pressed["left"]: delta_x = -constantes.VELOCIDAD
+            elif pressed["right"]: delta_x = constantes.VELOCIDAD
+            '''
             if mover_arriba: delta_y = -constantes.VELOCIDAD
             elif mover_abajo: delta_y = constantes.VELOCIDAD
             elif mover_izquierda: delta_x = -constantes.VELOCIDAD
@@ -521,6 +525,8 @@ while run:
             # Mover tanque del jugador
             tanque_jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
             
+            '''
+           
             # Actualizar estado del tanque del jugador
             tanque_jugador.update()
         
@@ -682,24 +688,36 @@ while run:
                 for p in state["players"]:
                     pid = p["id"]
                     if pid == net.player_id:
+                        # 1. CORRECCIÓN DEL CLIENTE (si se usa la predicción)
+                        # Sobreescribe la posición local con la posición oficial del servidor
                         tanque_jugador.forma.centerx = p["x"]
                         tanque_jugador.forma.centery = p["y"]
                         tanque_jugador.energia = p.get("hp", tanque_jugador.energia)
+                        # Aquí, idealmente, se debe aplicar la *reconciliación*
+                        # del cliente si se está implementando corrección de lag
+                        # (por ahora, la sobrescritura directa es suficiente)
                     else:
-                        #Actualizar o crear jugadores romotos
+                        # Actualizar o crear jugadores remotos
                         if pid not in remote_players:
+                            # Se recomienda crear un sprite simple para el "fantasma" del jugador remoto
                             ghost = Tanque(p["x"], p["y"], animaciones, 900, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
                             ghost.is_remote = True
                             remote_players[pid] = ghost
                         else:
                             ghost = remote_players[pid]
+                            # Mover al fantasma a la posición del servidor
                             ghost.forma.centerx = p["x"]
                             ghost.forma.centery = p["y"]
+                            # Actualizar otras propiedades (HP, rotación, etc.)
+                            # En este ejemplo solo se actualiza la posición
+
         if state:
             remote_ids = {p["id"] for p in state["players"]}
+            # Eliminar jugadores que ya no están conectados
             for pid in list(remote_players.keys()):
                 if pid not in remote_ids:
                     del remote_players[pid]
+        # ... (continúa con la SECCIÓN 4: DIBUJAR TODO EN PANTALLA)
         # =================================================
         # SECCIÓN 4: DIBUJAR TODO EN PANTALLA
         # =================================================
