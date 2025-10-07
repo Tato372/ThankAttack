@@ -89,18 +89,18 @@ class Bullet(pygame.sprite.Sprite):
                     break
         
         #Verificar si hay colision con un obstaculo
-        if not daño_aplicado:
-            for obstaculo in obstaculos_tiles:
-                if obstaculo[1].colliderect(self.rect):
-                    if fortaleza_protegida and len(obstaculo) > 5 and obstaculo[5]:
-                         self.kill()
-                         break
-                    if obstaculo[4] > 0:
-                        obstaculo[4] -= 1
-                        if obstaculo[4] == 0:
-                            obstaculos_tiles.remove(obstaculo)
-                    self.kill()
-                    break
+        for obstaculo in obstaculos_tiles:
+            if obstaculo[1].colliderect(self.rect):
+                # <-- CAMBIO: Si la fortaleza está protegida, no dañar los muros -->
+                if fortaleza_protegida and obstaculo[4] == -2: # Usamos -2 para identificar los muros de la fortaleza
+                        self.kill()
+                        break
+                if obstaculo[4] > 0:
+                    obstaculo[4] -= 1
+                    if obstaculo[4] == 0:
+                        obstaculos_tiles.remove(obstaculo)
+                self.kill()
+                break
         
         return daño, posicion_daño
 
