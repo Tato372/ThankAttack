@@ -13,7 +13,7 @@ from network import NetworkManager
 
 pygame.init()
 
-net = NetworkManager("ws://127.0.0.1:8000/ws")
+net = NetworkManager("ws://172.24.75.48:8000/ws")
 net.start()
 net.join("JugadorPygame")
 input_seq = 0
@@ -520,12 +520,11 @@ while run:
             if mover_arriba: delta_y = -constantes.VELOCIDAD
             elif mover_abajo: delta_y = constantes.VELOCIDAD
             elif mover_izquierda: delta_x = -constantes.VELOCIDAD
-            elif mover_derecha: delta_x = constantes.VELOCIDAD
-
-            # Mover tanque del jugador
-            tanque_jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
-            
+            elif mover_derecha: delta_x = constantes.VELOCIDAD            
             '''
+
+            # Mover tanque del jugador basándose en las teclas presionadas
+            tanque_jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
            
             # Actualizar estado del tanque del jugador
             tanque_jugador.update()
