@@ -9,8 +9,14 @@ from mundo import Mundo
 import os
 import csv
 import random 
+from network import NetworkManager
 
 pygame.init()
+
+net = NetworkManager("ws://127.0.0.1:8000/ws")
+net.start()
+net.join("JugadorPygame")
+input_seq = 0
 
 pantalla = pygame.display.set_mode((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
 pygame.display.set_caption("Tank-Atackk")
@@ -456,7 +462,8 @@ mover_arriba = False
 mover_abajo = False
 mover_izquierda = False
 mover_derecha = False
-
+pressed = {"up":False, "down":False, "left":False, "right":False, "fire":False}
+remote_players = {}
 #Controlar framerate
 reloj = pygame.time.Clock()
 
@@ -667,6 +674,32 @@ while run:
                     tanques.append(enemigo)
             # --- FIN DE LÓGICA DE OLEADAS ---
 
+        #ACTUALIZAR EL ESTADO DESDE EL SERVIDOR
+        state = None
+        for msg in net.poll():
+            if msg["type"] == "snapshot":
+                state = msg["state"]
+                for p in state["players"]:
+                    pid = p["id"]
+                    if pid == net.player_id:
+                        tanque_jugador.forma.centerx = p["x"]
+                        tanque_jugador.forma.centery = p["y"]
+                        tanque_jugador.energia = p.get("hp", tanque_jugador.energia)
+                    else:
+                        #Actualizar o crear jugadores romotos
+                        if pid not in remote_players:
+                            ghost = Tanque(p["x"], p["y"], animaciones, 900, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN)
+                            ghost.is_remote = True
+                            remote_players[pid] = ghost
+                        else:
+                            ghost = remote_players[pid]
+                            ghost.forma.centerx = p["x"]
+                            ghost.forma.centery = p["y"]
+        if state:
+            remote_ids = {p["id"] for p in state["players"]}
+            for pid in list(remote_players.keys()):
+                if pid not in remote_ids:
+                    del remote_players[pid]
         # =================================================
         # SECCIÓN 4: DIBUJAR TODO EN PANTALLA
         # =================================================
@@ -698,7 +731,11 @@ while run:
                 temp_img = arbusto[0]
                 temp_img.set_alpha(150) # Hacemos la copia transparente
                 pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
-                
+
+        #Dibujar jugadores remotos
+        for ghost in remote_players.values():
+            ghost.dibujar(pantalla, posicion_pantalla)           
+
         # Balas y textos
         for bala in grupo_balas:
             bala.dibujar(pantalla, posicion_pantalla)
@@ -785,15 +822,34 @@ while run:
                 run = False
             
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_a: mover_izquierda = True
-                if event.key == pygame.K_d: mover_derecha = True
-                if event.key == pygame.K_w: mover_arriba = True
-                if event.key == pygame.K_s: mover_abajo = True
+                if event.key == pygame.K_w: 
+                    pressed["up"] = True
+                    mover_arriba = True
+                if event.key == pygame.K_s: 
+                    pressed["down"] = True
+                    mover_abajo = True
+                if event.key == pygame.K_a: 
+                    pressed["left"] = True
+                    mover_izquierda = True
+                if event.key == pygame.K_d: 
+                    pressed["right"] = True
+                    mover_derecha = True
             if event.type == pygame.KEYUP:
-                if event.key == pygame.K_a: mover_izquierda = False
-                if event.key == pygame.K_d: mover_derecha = False
-                if event.key == pygame.K_w: mover_arriba = False
-                if event.key == pygame.K_s: mover_abajo = False
+                if event.key == pygame.K_w: 
+                    pressed["up"] = False
+                    mover_arriba = False
+                if event.key == pygame.K_s: 
+                    pressed["down"] = False
+                    mover_abajo = False
+                if event.key == pygame.K_a: 
+                    pressed["left"] = False
+                    mover_izquierda = False
+                if event.key == pygame.K_d: 
+                    pressed["right"] = False
+                    mover_derecha = False
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                pressed["fire"] = True
                     
             if event.type == pygame.MOUSEBUTTONDOWN:
                 game_over = vidas_jugador <= 0 and not tanque_jugador.vivo
