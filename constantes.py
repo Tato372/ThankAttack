@@ -62,7 +62,7 @@ ITEM_VIDA = 7
 BOOST = 6
 # <-- CAMBIO: Tiempos de duración de los bonus (en milisegundos) -->
 DURACION_BONUS = 15000  # 15 segundos para escudo, potenciador y boost
-DURACION_RELOJ = 10000  # 10 segundos
+DURACION_RELOJ = 15000  # 10 segundos
 DURACION_ESCUDO_FORTALEZA = 20000 # 20 segundos
 
 # <-- CAMBIO: Modificadores para el bonus "Boost" -->
@@ -96,7 +96,7 @@ TANQUE_STATS = {
         "cooldown_disparo": 1000,   # Disparo rápido
     },
     3: {  # Marrón - Tipo 3
-        "velocidad": 2.0,          # Rápido
+        "velocidad": 1.5,          # Rápido
         "vida": 40,
         "cooldown_disparo": 1000,   # Disparo rápido
     },
