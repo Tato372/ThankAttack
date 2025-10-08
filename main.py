@@ -688,7 +688,9 @@ while run:
 
         # ACTUALIZAR EL ESTADO DESDE EL SERVIDOR
         state = None
+        # Depuración: mostrar mensajes crudos recibidos del NetworkManager
         for msg in net.poll():
+            print(f"[NET-RAW] {msg}")
             if msg["type"] == "snapshot":
                 state = msg["state"]
                 # Log básico para verificar que recibimos snapshots y el id asignado
