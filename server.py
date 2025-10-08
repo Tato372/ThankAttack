@@ -28,7 +28,7 @@ async def notificar_a_partida(id_partida, mensaje):
 
 async def transmitir_lista_partidas():
     lista_para_clientes = {
-        pid: {"id": pid, "nombre": p["nombre"], "dificultad": p["dificultad"], "llena": "cliente" in p}
+        pid: {"id": pid, "nombre": p["nombre"], "dificultad": p["dificultad"], "llena": p.get("cliente") is not None}
         for pid, p in partidas.items()
     }
     mensaje = {"type": "actualizar_lista_partidas", "partidas": lista_para_clientes}
