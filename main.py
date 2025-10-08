@@ -231,17 +231,25 @@ def pantalla_lobby():
 # NUEVO: Pantalla de espera del Host
 def pantalla_espera_host():
     pantalla.fill(constantes.COLOR_FONDO)
-    dibujar_texto(f"Partida: {info_partida['nombre']}", fuente_inicio, constantes.BLANCO, 100, 100)
-    dibujar_texto(f"Dificultad: {info_partida['dificultad']}", fuente_inicio, constantes.BLANCO, 100, 160)
-
-    if info_partida["cliente"] is None:
-        dibujar_texto("Esperando al Jugador 2...", fuente_titulo, constantes.AMARILLO, constantes.ANCHO_VENTANA / 4 - 150, 300)
-    else:
+    
+    # CORREGIDO: Usar 'mi_partida_actual' que contiene los datos del servidor
+    nombre_partida = mi_partida_actual.get("nombre", "Cargando...")
+    dificultad_partida = mi_partida_actual.get("dificultad", "")
+    
+    dibujar_texto(f"Partida: {nombre_partida}", fuente_inicio, constantes.BLANCO, 100, 100)
+    dibujar_texto(f"Dificultad: {dificultad_partida}", fuente_inicio, constantes.BLANCO, 100, 160)
+    
+    # Comprobar si el cliente ya se unió (revisando si la llave 'cliente' tiene un valor)
+    if mi_partida_actual.get("cliente"):
         dibujar_texto("¡Jugador 2 se ha unido!", fuente_titulo, constantes.VERDE, constantes.ANCHO_VENTANA / 4 - 200, 300)
-        dibujar_boton_retro("Iniciar Partida", boton_iniciar_partida) # Solo se muestra si el cliente está
+        
+        # CORREGIDO: Solo el host puede ver y presionar el botón de "Iniciar Partida"
+        if mi_partida_actual.get("host") == net.player_id:
+            dibujar_boton_retro("Iniciar Partida", boton_iniciar_partida)
+    else:
+        dibujar_texto("Esperando al Jugador 2...", fuente_titulo, constantes.AMARILLO, constantes.ANCHO_VENTANA / 4 - 150, 300)
 
-    dibujar_boton_retro("Cancelar", boton_volver_lobby)
-    pygame.display.update()
+    dibujar_boton_retro("Cancelar", boton_volver_lobby) # 'Cancelar' te llevará de vuelta al menú
 
 # (Simularemos la pantalla de "unirse" con una lógica simple por ahora)
 
