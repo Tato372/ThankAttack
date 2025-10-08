@@ -15,7 +15,9 @@ import math
 pygame.init()
 
 game_state = "MENU_PRINCIPAL" # "MENU_PRINCIPAL", "LOBBY", "EN_JUEGO", "GAME_OVER", "VICTORIA"
-
+partidas_disponibles = {} # NUEVO: para guardar la lista de partidas del servidor
+mi_partida_actual = {} # NUEVO: para guardar la info de la partida a la que me uní
+botones_partidas = []
 # NUEVO: Variables para el lobby y multijugador local simulado
 info_partida = {
     "nombre": "",
@@ -28,7 +30,7 @@ info_partida = {
 jugador1_listo = False
 jugador2_listo = False
 
-net = NetworkManager("ws://172.24.75.48:8000/ws")
+net = NetworkManager("ws://172.24.78.242:8000/ws")
 
 remote_players = {}
 
@@ -36,6 +38,29 @@ pantalla = pygame.display.set_mode((constantes.ANCHO_VENTANA, constantes.ALTO_VE
 pygame.display.set_caption("Tank-Atackk")
 
 #Funciones:
+
+def pantalla_lista_partidas():
+    global botones_partidas
+    pantalla.fill(constantes.COLOR_FONDO)
+    dibujar_texto("PARTIDAS DISPONIBLES", fuente_titulo, constantes.BLANCO, 150, 50)
+    
+    botones_partidas = []
+    y_pos = 150
+    if not partidas_disponibles:
+        dibujar_texto("No hay partidas, ¡crea una!", fuente_inicio, constantes.AMARILLO, 300, 300)
+    else:
+        for id_partida, info in partidas_disponibles.items():
+            if not info["llena"]:
+                texto = f"{info['nombre']} - {info['dificultad']}"
+                rect = pygame.Rect(300, y_pos, 600, 50)
+                botones_partidas.append((id_partida, rect))
+                dibujar_boton_retro(texto, rect)
+                y_pos += 70
+
+    dibujar_boton_retro("Refrescar", boton_refrescar_partidas)
+    dibujar_boton_retro("Volver", boton_volver_lobby)
+    pygame.display.update()
+    
 #Funcion para dibujar botones
 def dibujar_boton_retro(texto, rect, seleccionado=False):
     # Dibujar fondo
@@ -525,6 +550,7 @@ boton_volver_lobby = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 430, constantes
 ##Boton iniciar partida
 boton_iniciar_partida = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 90, constantes.ALTO_VENTANA // 2, 390, 50)
 
+boton_refrescar_partidas = pygame.Rect(constantes.ANCHO_VENTANA // 2 - 90, constantes.ALTO_VENTANA // 2 + 150, 390, 50)
 
 #Definir variables de movimiento del tanque
 mover_arriba = False
@@ -537,8 +563,6 @@ reloj = pygame.time.Clock()
 
 mostrar_inicio = True
 
-# main.py (a partir de la línea 'run = True')
-
 run = True
 while run:
     # 1. Controlar el framerate
@@ -550,13 +574,13 @@ while run:
 
     if game_state == "MENU_PRINCIPAL":
         pantalla_inicio()
-
     elif game_state == "LOBBY":
         pantalla_lobby()
-
-    elif game_state == "ESPERA_HOST":
-        pantalla_espera_host()
-
+    elif game_state == "LISTA_PARTIDAS":
+        pantalla_lista_partidas()
+    elif game_state == "SALA_ESPERA":
+        # Usamos la misma función de antes, pero con datos del servidor
+        pantalla_espera_host() # Asegúrate que esta función ahora use 'mi_partida_actual'
     elif game_state == "EN_JUEGO":
         # --- LÓGICA DE ACTUALIZACIÓN ---
         # Actualizar estado de los jugadores locales
@@ -827,7 +851,7 @@ while run:
             jugador1_listo = False
             jugador2_listo = False
             game_state = "VICTORIA"
-
+    
     elif game_state == "GAME_OVER":
         pantalla.fill(constantes.ROJO_OSCURO)
         dibujar_texto("Game Over", fuente_titulo, constantes.BLANCO, constantes.ANCHO_VENTANA/4, constantes.ALTO_VENTANA/4)
@@ -851,7 +875,19 @@ while run:
             texto2 = "LISTO" if jugador2_listo else "Esperando..."
             dibujar_texto(f"J1: {texto1}", fuente, constantes.BLANCO, boton_reinicio_vic.x, boton_reinicio_vic.y + 60)
             # ... y así sucesivamente para otros botones y estados del J2
-
+    
+    for msg in net.poll():
+        tipo_mensaje = msg.get("type")
+        if tipo_mensaje == "actualizar_lista_partidas":
+            partidas_disponibles = msg.get("partidas", {})
+        elif tipo_mensaje in ["partida_creada", "actualizacion_partida"]:
+            mi_partida_actual = msg.get("partida", {})
+            game_state = "SALA_ESPERA"
+        elif tipo_mensaje == "iniciar_juego":
+            partida_info = msg.get("partida", {})
+            mundo, tanques_aliados, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = iniciar_partida(partida_info["dificultad"], 2) # Usa los datos del servidor
+            game_state = "EN_JUEGO"
+    
     # ==================================================================
     # SECCIÓN DE EVENTOS: MANEJO DE INPUTS DEL USUARIO
     # ==================================================================
@@ -901,26 +937,29 @@ while run:
 
             elif game_state == "LOBBY":
                 if boton_crear_partida.collidepoint(pos_mouse):
-                    info_partida["nombre"] = f"Partida_{random.randint(100,999)}"
-                    info_partida["dificultad"] = dificultad_seleccionada
-                    info_partida["cliente"] = None
-                    game_state = "ESPERA_HOST"
-                if boton_unirse_partida.collidepoint(pos_mouse):
-                    # Simulación de unirse a partida
-                    if info_partida["nombre"] and not info_partida["cliente"]:
-                        info_partida["cliente"] = "jugador2"
-                if boton_volver_lobby.collidepoint(pos_mouse):
+                    # Pedir al servidor que cree la partida
+                    net.crear_partida(f"Partida de {random.randint(100,999)}", dificultad_seleccionada)
+                elif boton_unirse_partida.collidepoint(pos_mouse):
+                    # Pedir la lista de partidas y cambiar de estado
+                    net.pedir_lista_partidas()
+                    game_state = "LISTA_PARTIDAS"
+                elif boton_volver_lobby.collidepoint(pos_mouse):
                     game_state = "MENU_PRINCIPAL"
 
-            elif game_state == "ESPERA_HOST":
-                if info_partida["cliente"] and boton_iniciar_partida.collidepoint(pos_mouse):
-                    mundo, tanques_aliados, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales = iniciar_partida(info_partida["dificultad"], 2)
-                    tiempo_inicio_partida = pygame.time.get_ticks()
-                    game_state = "EN_JUEGO"
+            elif game_state == "SALA_ESPERA":
+                # Solo el host puede iniciar la partida
+                if mi_partida_actual.get("host") == net.player_id and boton_iniciar_partida.collidepoint(pos_mouse):
+                    net.iniciar_juego(mi_partida_actual.get("id"))
+                    
+            elif game_state == "LISTA_PARTIDAS":
                 if boton_volver_lobby.collidepoint(pos_mouse):
-                    info_partida = {"nombre": "", "dificultad": "Facil", "host": "jugador1", "cliente": None, "estado": "ESPERANDO"}
                     game_state = "LOBBY"
-
+                if boton_refrescar_partidas.collidepoint(pos_mouse):
+                    net.pedir_lista_partidas()
+                for id_partida, rect in botones_partidas:
+                    if rect.collidepoint(pos_mouse):
+                        net.unirse_a_partida(id_partida)
+                        
             elif game_state in ["GAME_OVER", "VICTORIA"]:
                 # Volver al menú (funciona para ambos estados)
                 if boton_volver_menu.collidepoint(pos_mouse) or boton_volver_menu_vic.collidepoint(pos_mouse):

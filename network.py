@@ -73,6 +73,18 @@ class NetworkManager:
 
     def join(self, name="Player"):
         self.send_q.put({"type":"join","name": name})
+    
+    def crear_partida(self, nombre, dificultad):
+        self.send_q.put({"type": "crear_partida", "nombre": nombre, "dificultad": dificultad})
+
+    def pedir_lista_partidas(self):
+        self.send_q.put({"type": "pedir_lista_partidas"})
+
+    def unirse_a_partida(self, id_partida):
+        self.send_q.put({"type": "unirse_a_partida", "id_partida": id_partida})
+
+    def iniciar_juego(self, id_partida):
+        self.send_q.put({"type": "iniciar_juego", "id_partida": id_partida})
 
     def poll(self):
         """Devuelve una lista de mensajes recibidos (vací­a la cola)"""
