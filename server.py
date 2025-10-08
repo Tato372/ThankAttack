@@ -152,7 +152,8 @@ async def websocket_endpoint(ws: WebSocket):
                     "cliente": None, 
                     "estado": "esperando",
                     "spawn_p1": msg.get("spawn_p1"), # NUEVO
-                    "spawn_p2": msg.get("spawn_p2")  # NUEVO
+                    "spawn_p2": msg.get("spawn_p2"),  # NUEVO
+                    "obstaculos": msg.get("obstaculos")
                 }
                 await notificar_a_jugador(id_jugador, {"type": "partida_creada", "partida": partidas[id_partida]})
                 await transmitir_lista_partidas()
