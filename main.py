@@ -14,9 +14,6 @@ from network import NetworkManager
 pygame.init()
 
 net = NetworkManager("ws://172.24.75.48:8000/ws")
-net.start()
-net.join("JugadorPygame")
-input_seq = 0
 
 remote_players = {}
 
@@ -385,6 +382,15 @@ imagenes_items = [
     [boost],                  # 6: Boost
     [vida]                    # 7: Vida
 ]
+
+# Iniciar red después de cargar recursos para evitar que lleguen snapshots antes de que
+# las animaciones/recursos estén listos (condición de carrera).
+net.start()
+net.join("JugadorPygame")
+print("[DEBUG] Network started and join requested")
+
+# Secuencia de inputs del cliente
+input_seq = 0
 
 #Lista que representa y almacena los datos del mundo
 data_suelo = []
