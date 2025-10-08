@@ -577,51 +577,61 @@ while run:
         pantalla_espera_host() # Asegúrate que esta función ahora use 'mi_partida_actual'
     elif game_state == "EN_JUEGO":
         # --- LÓGICA DE ACTUALIZACIÓN ---
-        posicion_pantalla = [0, 0] # Valor por defecto
-        if tanques_aliados:
-            cam_x = tanques_aliados[0].forma.centerx - constantes.ANCHO_VENTANA / 2
-            cam_y = tanques_aliados[0].forma.centery - constantes.ALTO_VENTANA / 2
-            cam_x = max(0, min(cam_x, constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
-            cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
-            posicion_pantalla = [cam_x, cam_y]    
+        # PASO 1: GESTIONAR MOVIMIENTO Y ESTADO DE LOS JUGADORES
+        if jugadores_seleccionados == 1:
+            # En modo 1 jugador, el movimiento es 100% local
+            keys = pygame.key.get_pressed()
+            delta_x, delta_y = 0, 0
+            if keys[pygame.K_w]: delta_y = -constantes.VELOCIDAD
+            elif keys[pygame.K_s]: delta_y = constantes.VELOCIDAD
+            elif keys[pygame.K_a]: delta_x = -constantes.VELOCIDAD
+            elif keys[pygame.K_d]: delta_x = constantes.VELOCIDAD
+            
+            if tanques_aliados:
+                tanques_aliados[0].movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
+                tanques_aliados[0].update() # <-- Ejecuta la animación del sprite
 
-        # Actualizar tanques enemigos, balas, items y otros
-        # (Esta lógica solo se ejecuta si al menos un jugador está vivo)
-        if any(j.vivo for j in tanques_aliados):
-            # Lógica de red (enviar inputs, recibir snapshots)
-            # (Se envía solo el input del jugador 1 por ahora)
+        # Enviar inputs y procesar snapshots del servidor SÓLO en multijugador
+        if jugadores_seleccionados > 1:
             input_seq += 1
             net.send_input(input_seq, pressed)
             
-            # Procesar mensajes del servidor
             for msg in net.poll():
                 if msg["type"] == "snapshot":
                     state = msg["state"]
                     for p_data in state["players"]:
                         pid = p_data["id"]
                         if pid == net.player_id:
-                            # Sincronizar nuestro jugador con el servidor
+                            # Sincronizar nuestro jugador con la posición autoritativa del servidor
                             tanques_aliados[0].forma.centerx = p_data["x"]
                             tanques_aliados[0].forma.centery = p_data["y"]
-                            tanques_aliados[0].energia = p_data.get("hp", tanques_aliados[0].energia)
+                            tanques_aliados[0].rotate = p_data.get("rot", 0)
+                            # La animación (update) se ejecuta con el input local para fluidez
+                            tanques_aliados[0].update() 
                         else:
-                            # Crear o actualizar "fantasmas" de otros jugadores
+                            # Actualizar o crear "fantasmas" de otros jugadores
                             if pid not in remote_players:
-                                ghost = Tanque(p_data["x"], p_data["y"], animaciones, p_data.get("hp", 90), 0, 0, 0)
+                                ghost = Tanque(p_data["x"], p_data["y"], animaciones, 90, 0, 0, 0)
                                 remote_players[pid] = ghost
                             else:
                                 ghost = remote_players[pid]
                                 ghost.forma.centerx = p_data["x"]
                                 ghost.forma.centery = p_data["y"]
-                                ghost.energia = p_data.get("hp", ghost.energia)
                                 ghost.rotate = p_data.get("rot", 0)
-                    
-                    # Eliminar fantasmas de jugadores desconectados
-                    remote_ids = {p["id"] for p in state["players"]}
-                    for pid in list(remote_players.keys()):
-                        if pid not in remote_ids:
-                            del remote_players[pid]
+                                ghost.update() # Actualizar también la animación del fantasma
 
+        # PASO 2: CALCULAR LA POSICIÓN DE LA CÁMARA
+        # Se calcula DESPUÉS de que los tanques tienen su posición final para este fotograma
+        posicion_pantalla = [0, 0]
+        if tanques_aliados:
+            cam_x = tanques_aliados[0].forma.centerx - constantes.ANCHO_VENTANA / 2
+            cam_y = tanques_aliados[0].forma.centery - constantes.ALTO_VENTANA / 2
+            cam_x = max(0, min(cam_x, constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
+            cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
+            posicion_pantalla = [cam_x, cam_y]
+        # Actualizar tanques enemigos, balas, items y otros
+        # (Esta lógica solo se ejecuta si al menos un jugador está vivo)
+        if any(j.vivo for j in tanques_aliados):
             # Actualizar IA de enemigos
             for enemigo in list(tanques_enemigos):
                 if not enemigo.update():
@@ -918,8 +928,14 @@ while run:
                     
                     spawn1_coords = (px1 * constantes.TAMAÑO_REJILLA + 16, py1 * constantes.TAMAÑO_REJILLA + 16)
                     spawn2_coords = (px2 * constantes.TAMAÑO_REJILLA + 16, py2 * constantes.TAMAÑO_REJILLA + 16)
-
-                    net.crear_partida(f"Partida de {random.randint(100,999)}", dificultad_seleccionada, spawn1_coords, spawn2_coords)
+                    
+                    lista_obstaculos = []
+                    for obs in mundo_temporal.obstaculos_tiles:
+                        rect = obs[1]
+                        lista_obstaculos.append([rect.x, rect.y, rect.width, rect.height])
+                    # Enviar todo al servidor
+                    net.crear_partida(f"Partida de {random.randint(100,999)}", dificultad_seleccionada, spawn1_coords, spawn2_coords, lista_obstaculos)
+                    
                 elif boton_unirse_partida.collidepoint(pos_mouse):
                     # Pedir la lista de partidas y cambiar de estado
                     net.pedir_lista_partidas()

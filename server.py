@@ -6,6 +6,8 @@ import uuid
 import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import uvicorn
+import pygame
+import constantes
 
 app = FastAPI()
 
@@ -28,6 +30,7 @@ class GameState:
         self.id = partida_info["id"]
         self.estado = "en_juego"
         self.players = {}
+        self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
         # Inicializar jugadores en el estado
         if partida_info.get("host"):
             # MODIFICADO: Usar las posiciones de spawn del mapa
@@ -74,29 +77,49 @@ async def game_loop():
                 game = partida["game_state"]
                 
                 speed = 4
+                player_size = (int(constantes.ANCHO_TANQUE * constantes.ESCALA_TANQUE_ANCHO), int(constantes.ALTO_TANQUE * constantes.ESCALA_TANQUE_ALTO))
+
                 for player in game.players.values():
+                    # Crear rect del jugador para colisiones
+                    player_rect = pygame.Rect(0, 0, player_size[0], player_size[1])
+                    player_rect.center = (player.x, player.y)
+
                     while player.inputs:
                         keys = player.inputs.pop(0)
-                        # MODIFICADO: Actualizar rotación en el servidor
-                        if keys.get("up"): 
-                            player.y -= speed
-                            player.rot = 270
-                        if keys.get("down"): 
-                            player.y += speed
-                            player.rot = 90
+                        
+                        # Guardar posición original
+                        original_x, original_y = player.x, player.y
+
+                        # Mover en X
                         if keys.get("left"): 
                             player.x -= speed
                             player.rot = 180
                         if keys.get("right"): 
                             player.x += speed
                             player.rot = 0
+                        
+                        player_rect.centerx = player.x
+                        # Comprobar colisión en X
+                        if player_rect.collidelist(game.obstaculos) != -1:
+                            player.x = original_x # Si choca, revertir movimiento en X
 
-                # MODIFICADO: Enviar también la rotación
+                        # Mover en Y
+                        if keys.get("up"): 
+                            player.y -= speed
+                            player.rot = 270
+                        if keys.get("down"): 
+                            player.y += speed
+                            player.rot = 90
+
+                        player_rect.centery = player.y
+                        # Comprobar colisión en Y
+                        if player_rect.collidelist(game.obstaculos) != -1:
+                            player.y = original_y # Si choca, revertir movimiento en Y
+
+                # Enviar el estado actualizado (snapshot)
                 snapshot = {
                     "type": "snapshot",
-                    "state": {
-                        "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot} for p in game.players.values()]
-                    }
+                    "state": { "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot} for p in game.players.values()] }
                 }
                 await notificar_a_partida(id_partida, snapshot)
                 
