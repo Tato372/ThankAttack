@@ -30,7 +30,7 @@ info_partida = {
 jugador1_listo = False
 jugador2_listo = False
 
-net = NetworkManager("ws://172.24.78.242:8000/ws")
+net = NetworkManager("ws://172.24.82.196:8000/ws")
 
 remote_players = {}
 
@@ -166,20 +166,6 @@ def iniciar_partida(dificultad, num_jugadores):
     tanques_aliados.append(tanque_jugador1)
 
     tanque_jugador2 = None
-    if num_jugadores == 2:
-        # Asegúrate de que el mapa CSV tenga un tile '8' para el spawn del jugador 2
-        if mundo.posicion_spawn_jugador2:
-            px2, py2 = mundo.posicion_spawn_jugador2
-            tanque_jugador2 = Tanque(
-                px2 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                py2 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                animaciones, 90, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
-            )
-            tanques.append(tanque_jugador2)
-            tanques_aliados.append(tanque_jugador2)
-        else:
-            print("ADVERTENCIA: No se encontró punto de spawn para el jugador 2 (tile 10).")
-
     
     #Crear el arma del tanque del jugador
     cañon_jugador = Weapon(imagen_cañon, imagen_balas)
@@ -591,30 +577,6 @@ while run:
         pantalla_espera_host() # Asegúrate que esta función ahora use 'mi_partida_actual'
     elif game_state == "EN_JUEGO":
         # --- LÓGICA DE ACTUALIZACIÓN ---
-        # Actualizar estado de los jugadores locales
-        for i, jugador in enumerate(tanques_aliados):
-            if jugador.vivo:
-                # Obtener teclas presionadas (solo una vez por frame)
-                keys = pygame.key.get_pressed()
-                delta_x, delta_y = 0, 0
-                
-                # Controles Jugador 1 (WASD)
-                if i == 0:
-                    if keys[pygame.K_w]: delta_y = -constantes.VELOCIDAD
-                    elif keys[pygame.K_s]: delta_y = constantes.VELOCIDAD
-                    elif keys[pygame.K_a]: delta_x = -constantes.VELOCIDAD
-                    elif keys[pygame.K_d]: delta_x = constantes.VELOCIDAD
-                
-                # Controles Jugador 2 (Flechas) - solo si hay 2 jugadores
-                elif i == 1:
-                    if keys[pygame.K_UP]: delta_y = -constantes.VELOCIDAD
-                    elif keys[pygame.K_DOWN]: delta_y = constantes.VELOCIDAD
-                    elif keys[pygame.K_LEFT]: delta_x = -constantes.VELOCIDAD
-                    elif keys[pygame.K_RIGHT]: delta_x = constantes.VELOCIDAD
-                
-                jugador.movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
-                jugador.update()
-        
         posicion_pantalla = [0, 0] # Valor por defecto
         if tanques_aliados:
             cam_x = tanques_aliados[0].forma.centerx - constantes.ANCHO_VENTANA / 2
@@ -652,6 +614,7 @@ while run:
                                 ghost.forma.centerx = p_data["x"]
                                 ghost.forma.centery = p_data["y"]
                                 ghost.energia = p_data.get("hp", ghost.energia)
+                                ghost.rotate = p_data.get("rot", 0)
                     
                     # Eliminar fantasmas de jugadores desconectados
                     remote_ids = {p["id"] for p in state["players"]}
@@ -946,7 +909,17 @@ while run:
             elif game_state == "LOBBY":
                 if boton_crear_partida.collidepoint(pos_mouse):
                     # Pedir al servidor que cree la partida
-                    net.crear_partida(f"Partida de {random.randint(100,999)}", dificultad_seleccionada)
+                    # El Host primero carga el mundo para saber los spawns
+                    mundo_temporal = Mundo()
+                    mundo_temporal.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad_seleccionada, 2)
+                    
+                    px1, py1 = mundo_temporal.posicion_spawn_jugador
+                    px2, py2 = mundo_temporal.posicion_spawn_jugador2
+                    
+                    spawn1_coords = (px1 * constantes.TAMAÑO_REJILLA + 16, py1 * constantes.TAMAÑO_REJILLA + 16)
+                    spawn2_coords = (px2 * constantes.TAMAÑO_REJILLA + 16, py2 * constantes.TAMAÑO_REJILLA + 16)
+
+                    net.crear_partida(f"Partida de {random.randint(100,999)}", dificultad_seleccionada, spawn1_coords, spawn2_coords)
                 elif boton_unirse_partida.collidepoint(pos_mouse):
                     # Pedir la lista de partidas y cambiar de estado
                     net.pedir_lista_partidas()

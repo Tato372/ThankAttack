@@ -17,12 +17,12 @@ partidas = {}    # Guarda la información de las partidas creadas {room_id: room
 
 # --- Clases para representar el estado del juego ---
 class PlayerState:
-    def __init__(self, player_id):
+    def __init__(self, player_id, x_inicial, y_inicial):
         self.id = player_id
-        self.x = 100
-        self.y = 100
+        self.x = x_inicial
+        self.y = y_inicial
+        self.rot = 0 # NUEVO: Para guardar la rotación
         self.inputs = []
-
 class GameState:
     def __init__(self, partida_info):
         self.id = partida_info["id"]
@@ -30,11 +30,12 @@ class GameState:
         self.players = {}
         # Inicializar jugadores en el estado
         if partida_info.get("host"):
-            self.players[partida_info["host"]] = PlayerState(partida_info["host"])
+            # MODIFICADO: Usar las posiciones de spawn del mapa
+            px1, py1 = partida_info["spawn_p1"]
+            self.players[partida_info["host"]] = PlayerState(partida_info["host"], px1, py1)
         if partida_info.get("cliente"):
-            self.players[partida_info["cliente"]] = PlayerState(partida_info["cliente"])
-            # Damos un offset inicial al segundo jugador
-            self.players[partida_info["cliente"]].x = 200
+            px2, py2 = partida_info["spawn_p2"]
+            self.players[partida_info["cliente"]] = PlayerState(partida_info["cliente"], px2, py2)
 
 # --- Funciones de Notificación ---
 async def notificar_a_jugador(player_id, mensaje):
@@ -72,21 +73,29 @@ async def game_loop():
             if partida.get("estado") == "en_juego":
                 game = partida["game_state"]
                 
-                # 1. Procesar inputs de los jugadores
                 speed = 4
                 for player in game.players.values():
                     while player.inputs:
                         keys = player.inputs.pop(0)
-                        if keys.get("up"): player.y -= speed
-                        if keys.get("down"): player.y += speed
-                        if keys.get("left"): player.x -= speed
-                        if keys.get("right"): player.x += speed
+                        # MODIFICADO: Actualizar rotación en el servidor
+                        if keys.get("up"): 
+                            player.y -= speed
+                            player.rot = 270
+                        if keys.get("down"): 
+                            player.y += speed
+                            player.rot = 90
+                        if keys.get("left"): 
+                            player.x -= speed
+                            player.rot = 180
+                        if keys.get("right"): 
+                            player.x += speed
+                            player.rot = 0
 
-                # 2. Enviar el estado actualizado (snapshot)
+                # MODIFICADO: Enviar también la rotación
                 snapshot = {
                     "type": "snapshot",
                     "state": {
-                        "players": [{"id": p.id, "x": p.x, "y": p.y} for p in game.players.values()]
+                        "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot} for p in game.players.values()]
                     }
                 }
                 await notificar_a_partida(id_partida, snapshot)
@@ -112,7 +121,16 @@ async def websocket_endpoint(ws: WebSocket):
             # --- Lógica del Lobby ---
             if tipo_mensaje == "crear_partida":
                 id_partida = str(uuid.uuid4())
-                partidas[id_partida] = {"id": id_partida, "nombre": msg.get("nombre"), "dificultad": msg.get("dificultad"), "host": id_jugador, "cliente": None, "estado": "esperando"}
+                partidas[id_partida] = {
+                    "id": id_partida, 
+                    "nombre": msg.get("nombre"), 
+                    "dificultad": msg.get("dificultad"), 
+                    "host": id_jugador, 
+                    "cliente": None, 
+                    "estado": "esperando",
+                    "spawn_p1": msg.get("spawn_p1"), # NUEVO
+                    "spawn_p2": msg.get("spawn_p2")  # NUEVO
+                }
                 await notificar_a_jugador(id_jugador, {"type": "partida_creada", "partida": partidas[id_partida]})
                 await transmitir_lista_partidas()
             elif tipo_mensaje == "pedir_lista_partidas":
@@ -126,9 +144,25 @@ async def websocket_endpoint(ws: WebSocket):
             elif tipo_mensaje == "iniciar_juego":
                 id_partida = msg.get("id_partida")
                 if id_partida in partidas and partidas[id_partida]["host"] == id_jugador:
-                    partidas[id_partida]["estado"] = "en_juego"
-                    partidas[id_partida]["game_state"] = GameState(partidas[id_partida]) # Se crea el estado del juego
-                    await notificar_a_partida(id_partida, {"type": "iniciar_juego", "partida": partidas[id_partida]})
+                    # Obtenemos la partida actual
+                    partida_actual = partidas[id_partida]
+                    partida_actual["estado"] = "en_juego"
+                    
+                    # Creamos el objeto GameState para uso INTERNO del servidor
+                    partida_actual["game_state"] = GameState(partida_actual)
+                    print(f"🚀 ¡Iniciando partida {id_partida[:8]}!")
+
+                    # --- INICIO DE LA CORRECCIÓN ---
+                    # Creamos una copia de la información de la partida para enviar al cliente
+                    info_para_cliente = partida_actual.copy()
+                    # Eliminamos el objeto que no se puede enviar por la red
+                    del info_para_cliente["game_state"]
+                    
+                    # Enviamos el diccionario limpio al cliente
+                    mensaje_inicio = {"type": "iniciar_juego", "partida": info_para_cliente}
+                    await notificar_a_partida(id_partida, mensaje_inicio)
+                    # --- FIN DE LA CORRECCIÓN ---
+                    
                     await transmitir_lista_partidas()
             
             # --- Lógica del Juego en Curso ---

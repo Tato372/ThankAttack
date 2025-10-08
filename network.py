@@ -74,8 +74,14 @@ class NetworkManager:
     def join(self, name="Player"):
         self.send_q.put({"type":"join","name": name})
     
-    def crear_partida(self, nombre, dificultad):
-        self.send_q.put({"type": "crear_partida", "nombre": nombre, "dificultad": dificultad})
+    def crear_partida(self, nombre, dificultad, spawn_p1, spawn_p2):
+        self.send_q.put({
+            "type": "crear_partida", 
+            "nombre": nombre, 
+            "dificultad": dificultad,
+            "spawn_p1": spawn_p1, # NUEVO
+            "spawn_p2": spawn_p2  # NUEVO
+        })
 
     def pedir_lista_partidas(self):
         self.send_q.put({"type": "pedir_lista_partidas"})
