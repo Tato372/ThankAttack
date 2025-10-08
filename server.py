@@ -91,12 +91,6 @@ class GameRoom:
 
 room = GameRoom()
 
-
-@app.on_event("startup")
-async def start_background_tasks():
-    print("[DEBUG] Starting game loop background task (startup event)")
-    asyncio.create_task(game_loop())
-
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
@@ -153,6 +147,8 @@ async def game_loop():
         await asyncio.sleep(max(0, interval - elapsed))
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(game_loop())
     print("------------------------------------------------------------------")
     print(f"🚀 Servidor de Juego Tank-Attackk iniciado en ws://0.0.0.0:8000/ws")
     print(f"Tasa de Actualización (TICK_RATE): {TICK_RATE} ticks/seg")

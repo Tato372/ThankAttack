@@ -44,7 +44,7 @@ COLOR_TEXTO = (255, 255, 255)     # blanco
 #Otros
 FPS = 60
 VELOCIDAD = 4
-DISPARO_COOLDOWN = 1000 # en milisegundos
+DISPARO_COOLDOWN = 800 # en milisegundos
 VELOCIDAD_BALA = 5
 TIPOS_TILES = 7
 RANGO_VISION = 4000
@@ -96,7 +96,7 @@ TANQUE_STATS = {
         "cooldown_disparo": 1000,   # Disparo rápido
     },
     3: {  # Marrón - Tipo 3
-        "velocidad": 1.25,          # Rápido
+        "velocidad": 1.35,          # Rápido
         "vida": 40,
         "cooldown_disparo": 1000,   # Disparo rápido
     },

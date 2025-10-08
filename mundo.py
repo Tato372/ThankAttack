@@ -8,6 +8,7 @@ no_destruibles = [5]
 arbustos = [6]
 suelo = [0, 1, 2, 3]
 jugador_spawn_tile = 7
+jugador2_spawn_tile = 10
 enemigo_spawn_tile = 8
 fortaleza_tile = 9
 
@@ -23,6 +24,7 @@ class Mundo():
         self.posicion_tile_3 = random.choice(suelo)
         self.posiciones_spawn_enemigos = []
         self.posicion_spawn_jugador = None
+        self.posicion_spawn_jugador2 = None
         self.posicion_fortaleza = None
         self.tiles_libres = []
 
@@ -121,6 +123,9 @@ class Mundo():
                 if tile == jugador_spawn_tile:
                     self.posicion_spawn_jugador = (x, y)
                     continue # No dibujamos un objeto aquí
+                elif tile == jugador2_spawn_tile: # <-- NUEVO
+                    self.posicion_spawn_jugador2 = (x, y) # <-- NUEVO
+                    continue # <-- NUEVO
                 elif tile == enemigo_spawn_tile:
                     self.posiciones_spawn_enemigos.append((x, y))
                     continue

@@ -31,7 +31,6 @@ class NetworkManager:
         try:
             async with websockets.connect(self.uri) as websocket:
                 self.ws = websocket
-                print(f"[NET] Conectado a {self.uri}")
                 # start background tasks
                 recv_task = asyncio.create_task(self._recv_loop())
                 send_task = asyncio.create_task(self._send_loop())
@@ -46,14 +45,11 @@ class NetworkManager:
             try:
                 msg = await self.ws.recv()
                 data = json.loads(msg)
-                # Depuración: mostrar mensajes crudos recibidos
-                print(f"[NET-RECV] {data}")
                 # guardar en cola para hilo principal
                 self.recv_q.put(data)
                 # process assign id
                 if data.get("type") == "assign_id":
                     self.player_id = data.get("player_id")
-                    print(f"[NET] player_id asignado: {self.player_id}")
             except Exception as e:
                 print("recv loop error", e)
                 break

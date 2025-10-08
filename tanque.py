@@ -27,6 +27,7 @@ class Tanque():
         self.frame_index_muerte = 0
         self.disparo_cooldown = disparo_cooldown
         self.velocidad = velocidad
+        print(f"Tanque CREADO -> Tipo: {tipo_tanque}, Velocidad Asignada: {self.velocidad}")
         self.modo_evasion = 0
         # <-- CAMBIO: Atributos para gestionar efectos de bonus -->
         # Para el jugador
@@ -70,84 +71,67 @@ class Tanque():
     def actualizar_ia_pixel(self, jugador, fortaleza, obstaculos, todos_los_tanques, arbustos, balas_enemigas):
         """IA definitiva con movimiento fluido por píxeles y lógica de evasión."""
 
-        # REGLA 4: Si está explotando, no hacer nada más.
         if self.explosion:
             return
 
-        # <-- CAMBIO: Ajustar velocidad de movimiento Y de disparo si está ralentizado -->
+        # CORREGIDO: Usar 'velocidad_actual' en toda la función para respetar las stats y bonus
         velocidad_actual = self.velocidad / 2 if self.ralentizado else self.velocidad
         cooldown_actual = self.disparo_cooldown * 2 if self.ralentizado else self.disparo_cooldown
 
-        # 1. DECIDIR OBJETIVO DE MOVIMIENTO
-        objetivo_movimiento = fortaleza.rect # REGLA 1: Por defecto, ir a la fortaleza
+        objetivo_movimiento = fortaleza.rect
         dist_jugador = math.sqrt((self.forma.centerx - jugador.forma.centerx)**2 + (self.forma.centery - jugador.forma.centery)**2)
-        # REGLA 2 Y 3: Si el jugador es visible y está en rango, cambiar de objetivo
         if dist_jugador < constantes.RANGO_AGGRO_JUGADOR and self.es_visible(jugador, arbustos, obstaculos):
             objetivo_movimiento = jugador.forma
 
-        # --- INICIO DEL BLOQUE: LÓGICA DE RETIRADA SI ESTÁ ATASCADO ---
-        # 1. Comprobar los 4 lados para ver si estamos en un callejón sin salida
         bloqueos = 0
-        direcciones = [(0, -self.velocidad*2), (0, self.velocidad*2), (-self.velocidad*2, 0), (self.velocidad*2, 0)]
+        direcciones = [(0, -velocidad_actual), (0, velocidad_actual), (-velocidad_actual, 0), (velocidad_actual, 0)]
         for dx, dy in direcciones:
             sensor = self.forma.copy()
             sensor.move_ip(dx, dy)
             if any(obs[1].colliderect(sensor) for obs in obstaculos) or \
-               any(t is not self and t.forma.colliderect(sensor) for t in todos_los_tanques):
+                any(t is not self and t.forma.colliderect(sensor) for t in todos_los_tanques):
                 bloqueos += 1
         
-        # 2. Si 3 o más lados están bloqueados, forzar retirada
         if bloqueos >= 3:
-            # ¡CORRECCIÓN! Inicializamos las variables aquí para que siempre existan.
             delta_x, delta_y = 0, 0
-            
-            # Moverse en la dirección contraria a la que se está mirando
             if self.rotate == 0:
-                delta_x = -self.velocidad
+                delta_x = -velocidad_actual
             elif self.rotate == 180:
-                delta_x = self.velocidad
+                delta_x = velocidad_actual
             elif self.rotate == 90:
-                delta_y = -self.velocidad
+                delta_y = -velocidad_actual
             elif self.rotate == 270:
-                delta_y = self.velocidad
+                delta_y = velocidad_actual
             
             self.movimiento(delta_x, delta_y, obstaculos, todos_los_tanques)
             return
-        # --- FIN DEL BLOQUE ---
-        # 2. CALCULAR MOVIMIENTO IDEAL Y EVASIÓN
+
         delta_x, delta_y = 0, 0
         dx_ideal, dy_ideal = 0, 0
         
-        # Solo nos movemos si no estamos ya muy cerca del objetivo
         if math.sqrt((self.forma.centerx - objetivo_movimiento.centerx)**2 + (self.forma.centery - objetivo_movimiento.centery)**2) > self.forma.width:
-            # Calcular dirección ideal (sin diagonales)
             if abs(self.forma.centerx - objetivo_movimiento.centerx) > abs(self.forma.centery - objetivo_movimiento.centery):
-                if self.forma.centerx > objetivo_movimiento.centerx: dx_ideal = -self.velocidad
-                elif self.forma.centerx < objetivo_movimiento.centerx: dx_ideal = self.velocidad
+                if self.forma.centerx > objetivo_movimiento.centerx: dx_ideal = -velocidad_actual # CORREGIDO
+                elif self.forma.centerx < objetivo_movimiento.centerx: dx_ideal = velocidad_actual  # CORREGIDO
             elif abs(self.forma.centery - objetivo_movimiento.centery) > 0:
-                if self.forma.centery > objetivo_movimiento.centery: dy_ideal = -self.velocidad
-                elif self.forma.centery < objetivo_movimiento.centery: dy_ideal = self.velocidad
+                if self.forma.centery > objetivo_movimiento.centery: dy_ideal = -velocidad_actual # CORREGIDO
+                elif self.forma.centery < objetivo_movimiento.centery: dy_ideal = velocidad_actual  # CORREGIDO
         
-            # --- INICIO DE LA LÓGICA DE EVASIÓN ---
-            sensor = self.forma.copy()
-            sensor.move_ip(dx_ideal * 2, dy_ideal * 2)
-            
-            obstaculo_en_frente = next((obs for obs in obstaculos if sensor.colliderect(obs[1])), None)
-            
-            if obstaculo_en_frente:
-                # Si hay un muro en frente, intentar moverse en la dirección perpendicular
-                if dx_ideal != 0: # Si el bloqueo es horizontal, intentar mover vertical
-                    if self.forma.centery > objetivo_movimiento.centery: delta_y = -self.velocidad
-                    else: delta_y = self.velocidad
-                else: # Si el bloqueo es vertical, intentar mover horizontal
-                    if self.forma.centerx > objetivo_movimiento.centerx: delta_x = -self.velocidad
-                    else: delta_x = self.velocidad
+        sensor = self.forma.copy()
+        sensor.move_ip(dx_ideal, dy_ideal)
+        
+        obstaculo_en_frente = next((obs for obs in obstaculos if sensor.colliderect(obs[1])), None)
+        
+        if obstaculo_en_frente:
+            if dx_ideal != 0:
+                if self.forma.centery > objetivo_movimiento.centery: delta_y = -velocidad_actual # CORREGIDO
+                else: delta_y = velocidad_actual # CORREGIDO
             else:
-                # Si el camino está libre, seguir la ruta ideal
-                delta_x, delta_y = dx_ideal, dy_ideal
-            # --- FIN DE LA LÓGICA DE EVASIÓN ---
+                if self.forma.centerx > objetivo_movimiento.centerx: delta_x = -velocidad_actual # CORREGIDO
+                else: delta_x = velocidad_actual # CORREGIDO
+        else:
+            delta_x, delta_y = dx_ideal, dy_ideal
 
-        # 3. LÓGICA DE DISPARO
         objetivo_disparo = None
         if dist_jugador < constantes.RANGO_DISPARO and self.es_visible(jugador, arbustos, obstaculos):
             objetivo_disparo = jugador.forma
@@ -167,14 +151,12 @@ class Tanque():
                 balas_enemigas.add(bala)
                 self.ultimo_ataque = pygame.time.get_ticks()
         
-        # 4. EVITAR ALIADOS antes del movimiento final
         if delta_x != 0 or delta_y != 0:
             sensor = self.forma.copy()
             sensor.move_ip(delta_x, delta_y)
             if any(t is not self and t.tipo_tanque >= 1 and sensor.colliderect(t.forma) for t in todos_los_tanques):
-                delta_x, delta_y = 0, 0 # Pausa para no chocar
+                delta_x, delta_y = 0, 0
 
-        # 5. EJECUTAR MOVIMIENTO
         self.movimiento(delta_x, delta_y, obstaculos, todos_los_tanques)
     
     # <-- CAMBIO: Nuevo método para actualizar los efectos de los bonus -->

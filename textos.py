@@ -6,14 +6,13 @@ class DamageText(pygame.sprite.Sprite):
         self.image = font.render(damage, True, color)
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
-        self.contadore = 0
+        self.contador = 0 # Renombré la variable para evitar la 'ñ'
     
-    def update(self, posicion_pantalla):
-        #Reposicionar basado en la posicion de la camara o pantalla
-        self.rect.x += posicion_pantalla[0]
-        self.rect.y += posicion_pantalla[1]
-        
-        self.rect.y -= 2
-        self.contadore += 1
-        if self.contadore >= 25:
+    # MODIFICADO: ya no recibe posicion_pantalla
+    def update(self):
+        # Mover el texto hacia arriba
+        self.rect.y -= 1
+        # Eliminar el texto después de un tiempo
+        self.contador += 1
+        if self.contador >= 30: # Le damos un poco más de tiempo en pantalla
             self.kill()
