@@ -20,6 +20,7 @@ mi_partida_actual = {} # NUEVO: para guardar la info de la partida a la que me u
 remote_players = {}
 remote_enemies = {} 
 remote_bullets = {}
+remote_items = {}
 botones_partidas = []
 # NUEVO: Variables para el lobby y multijugador local simulado
 info_partida = {
@@ -638,6 +639,7 @@ while run:
                                 tanques_aliados[0].rotate = p_data.get("rot", 0)
                                 tanques_aliados[0].energia = p_data.get("hp", 90)
                                 tanques_aliados[0].vidas = p_data.get("vidas", 3)
+                                tanques_aliados[0].escudo_activo = p_data.get("escudo", False)
                                 tanques_aliados[0].update()
                         else:
                             if pid not in remote_players:
@@ -670,7 +672,28 @@ while run:
                     for bid in list(remote_bullets.keys()):
                         if bid not in ids_balas_en_servidor:
                             del remote_bullets[bid]
-                            
+                    # Actualizar items (bonus)
+                    items_actuales = state.get("items", [])
+                    ids_items_en_servidor = {i["id"] for i in items_actuales}
+
+                    for item_data in items_actuales:
+                        iid = item_data["id"]
+                        if iid not in remote_items:
+                            # Crear un sprite simple para el item
+                            item_fantasma = pygame.sprite.Sprite()
+                            tipo_item = item_data["tipo"]
+                            # Usar la lista de imágenes ya cargada
+                            item_fantasma.image = imagenes_items[tipo_item][0] 
+                            item_fantasma.rect = item_fantasma.image.get_rect()
+                            remote_items[iid] = item_fantasma
+
+                        remote_items[iid].rect.center = (item_data["x"], item_data["y"])
+
+                    # Limpiar items que ya no existen
+                    for iid in list(remote_items.keys()):
+                        if iid not in ids_items_en_servidor:
+                            del remote_items[iid]
+        
                     # Actualizar enemigos
                     enemigos_actuales = state.get("enemies", [])
                     ids_enemigos_en_servidor = {e["id"] for e in enemigos_actuales}
@@ -746,10 +769,12 @@ while run:
         
         for bala in remote_bullets.values():
             pantalla.blit(bala.image, (bala.rect.x - posicion_pantalla[0], bala.rect.y - posicion_pantalla[1]))
-            
         for texto in grupo_textos_daño:
             pantalla.blit(texto.image, (texto.rect.x - posicion_pantalla[0], texto.rect.y - posicion_pantalla[1]))
         
+        for item in remote_items.values():
+            pantalla.blit(item.image, (item.rect.x - posicion_pantalla[0], item.rect.y - posicion_pantalla[1]))
+    
         # Dibujar arbustos y HUD
         todos_los_jugadores_visibles = list(tanques_aliados) + list(remote_players.values())
         for arbusto in mundo.arbustos:
