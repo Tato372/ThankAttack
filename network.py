@@ -83,6 +83,14 @@ class NetworkManager:
             "spawn_p2": spawn_p2,
             "obstaculos": obstaculos # NUEVO
         })
+    
+    def reportar_daño(self, objetivo, daño, es_fortaleza=False):
+        self.send_q.put({
+            "type": "reportar_daño",
+            "objetivo_id": objetivo, 
+            "daño": daño,
+            "es_fortaleza": es_fortaleza
+        })
         
     def pedir_lista_partidas(self):
         self.send_q.put({"type": "pedir_lista_partidas"})

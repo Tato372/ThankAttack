@@ -23,13 +23,19 @@ class PlayerState:
         self.id = player_id
         self.x = x_inicial
         self.y = y_inicial
+        self.spawn_x = x_inicial # Guardamos el spawn para reaparecer
+        self.spawn_y = y_inicial
+        self.hp = 90
+        self.vidas = 3
         self.rot = 0 # NUEVO: Para guardar la rotación
         self.inputs = []
+        
 class GameState:
     def __init__(self, partida_info):
         self.id = partida_info["id"]
         self.estado = "en_juego"
         self.players = {}
+        self.fortress_hp = 500 
         self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
         # Inicializar jugadores en el estado
         if partida_info.get("host"):
@@ -75,7 +81,6 @@ async def game_loop():
         for id_partida, partida in list(partidas.items()):
             if partida.get("estado") == "en_juego":
                 game = partida["game_state"]
-                
                 speed = 4
                 player_size = (int(constantes.ANCHO_TANQUE * constantes.ESCALA_TANQUE_ANCHO), int(constantes.ALTO_TANQUE * constantes.ESCALA_TANQUE_ALTO))
                 todos_los_rects_jugadores = [pygame.Rect(0, 0, *player_size, center=(p.x, p.y)) for p in game.players.values()]
@@ -108,6 +113,16 @@ async def game_loop():
                            any(player_rect_actual.colliderect(r) for j, r in enumerate(todos_los_rects_jugadores) if i != j):
                             player.y = original_y
 
+                for player in game.players.values():
+                    if player.hp <= 0 and player.vidas > 0:
+                        player.vidas -= 1
+                        if player.vidas > 0:
+                            player.hp = 90
+                            player.x, player.y = player.spawn_x, player.spawn_y # Respawn
+                        else:
+                            # Lógica para cuando un jugador es eliminado permanentemente
+                            pass
+                        
                 # Enviar el estado actualizado (snapshot)
                 snapshot = {
                     "type": "snapshot",
@@ -189,6 +204,18 @@ async def websocket_endpoint(ws: WebSocket):
                         if id_jugador in partida["game_state"].players:
                             partida["game_state"].players[id_jugador].inputs.append(msg.get("keys", {}))
                             break
+            elif tipo_mensaje == "reportar_daño":
+                for p in partidas.values():
+                    if p.get("estado") == "en_juego" and id_jugador in p["game_state"].players:
+                        game = p["game_state"]
+                        if msg.get("es_fortaleza"):
+                            game.fortress_hp = max(0, game.fortress_hp - msg.get("daño", 0))
+                        else:
+                            objetivo_id = msg.get("objetivo_id")
+                            if objetivo_id in game.players:
+                                target_player = game.players[objetivo_id]
+                                target_player.hp = max(0, target_player.hp - msg.get("daño", 0))
+                        break
 
     except WebSocketDisconnect:
         print(f"💔 Jugador desconectado: {id_jugador[:8]}")

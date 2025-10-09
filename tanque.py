@@ -8,6 +8,7 @@ class Tanque():
         self.cañon = None
         self.energia = energia
         self.vivo = True
+        self.vidas = 3 
         #Imagen de la animación que se está mostrando actalmente
         self.frame_index = 0 
         #Tiempo que ha pasado desde la última actualización de la animación (en milisegundos)

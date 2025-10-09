@@ -82,11 +82,8 @@ class Bullet(pygame.sprite.Sprite):
                     self.kill()
                     break
                 else:
-                    daño_aplicado = self.daño
-                    posicion_daño = tanque.forma.center
-                    tanque.energia -= daño_aplicado
                     self.kill()
-                    break
+                    return tanque
         
         #Verificar si hay colision con un obstaculo
         for obstaculo in obstaculos_tiles:
