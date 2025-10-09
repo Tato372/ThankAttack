@@ -105,10 +105,14 @@ async def game_loop():
     while True:
         t0 = time.time()
         for id_partida, partida in list(partidas.items()):
-            # --- Lógica de Spawning de Items ---
-            TIEMPO_SPAWN_ITEM = 60 # segundos
-            if time.time() - game.ultimo_spawn_item > TIEMPO_SPAWN_ITEM and len(game.items) < 3:
-                game.ultimo_spawn_item = time.time()
+            if partida.get("estado") == "en_juego" and "game_state" in partida:
+                game = partida["game_state"]
+                tiempo_actual_ms = time.time() * 1000
+                
+                # --- Lógica de Spawning de Items ---
+                TIEMPO_SPAWN_ITEM = 60000 # segundos
+                if time.time() - game.ultimo_spawn_item > TIEMPO_SPAWN_ITEM and len(game.items) < 3:
+                    game.ultimo_spawn_item = time.time()
                 item_id = str(uuid.uuid4())
 
                 # Elegir un tipo de item (ej. escudo o daño)
@@ -123,10 +127,6 @@ async def game_loop():
                         break # Posición válida encontrada
 
                 game.items[item_id] = ItemState(item_id, tipo_item, px, py)
-    
-            if partida.get("estado") == "en_juego" and "game_state" in partida:
-                game = partida["game_state"]
-                tiempo_actual_ms = time.time() * 1000
                 
                 # SOLUCIÓN 4: Lógica de aparición sin apilamiento
                 if len(game.enemies) < 4 and game.enemy_spawn_list:
@@ -387,10 +387,10 @@ async def websocket_endpoint(ws: WebSocket):
             elif tipo_mensaje == "disparar":
                 for p in partidas.values():
                     if p.get("estado") == "en_juego" and id_jugador in p.get("game_state", {}).players:
+                        game = p["game_state"]
                         player = game.players[id_jugador]
                         es_potenciado = player.potenciado_hasta > time.time()
                         dano_bala = 20 if es_potenciado else 10
-                        game = p["game_state"]
                         if time.time() * 1000 - player.ultimo_disparo > constantes.DISPARO_COOLDOWN:
                             bullet_id = str(uuid.uuid4())
                             game.bullets[bullet_id] = BulletState(bullet_id, id_jugador, player.x, player.y, player.rot, dano_bala)
