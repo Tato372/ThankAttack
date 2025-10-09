@@ -19,6 +19,7 @@ partidas_disponibles = {} # NUEVO: para guardar la lista de partidas del servido
 mi_partida_actual = {} # NUEVO: para guardar la info de la partida a la que me uní
 remote_players = {}
 remote_enemies = {} 
+remote_bullets = {}
 botones_partidas = []
 # NUEVO: Variables para el lobby y multijugador local simulado
 info_partida = {
@@ -651,6 +652,24 @@ while run:
                             ghost.energia = p_data.get("hp", 90)
                             ghost.vidas = p_data.get("vidas", 3)
                             ghost.update()
+                    balas_actuales = state.get("bullets", [])
+                    ids_balas_en_servidor = {b["id"] for b in balas_actuales}
+                    
+                    for bullet_data in balas_actuales:
+                        bid = bullet_data["id"]
+                        if bid not in remote_bullets:
+                            # Creamos un sprite simple para la bala
+                            bala_fantasma = pygame.sprite.Sprite()
+                            bala_fantasma.image = imagen_balas # Usa la imagen de bala que ya tienes cargada
+                            bala_fantasma.rect = bala_fantasma.image.get_rect()
+                            remote_bullets[bid] = bala_fantasma
+                        
+                        remote_bullets[bid].rect.center = (bullet_data["x"], bullet_data["y"])
+                        
+                    # Limpiar balas que ya no existen
+                    for bid in list(remote_bullets.keys()):
+                        if bid not in ids_balas_en_servidor:
+                            del remote_bullets[bid]
                             
                     # Actualizar enemigos
                     enemigos_actuales = state.get("enemies", [])
@@ -681,18 +700,6 @@ while run:
             # 2. Enviar nuestros inputs al servidor
             input_seq += 1
             net.send_input(input_seq, pressed)
-            
-            # 3. Actualizar balas (solo las nuestras)
-            if tanques_aliados and tanques_aliados[0].vivo:
-                bala = cañon_jugador.update(tanques_aliados[0], 1, False)
-                if bala:
-                    grupo_balas.add(bala)
-            
-            for bala in list(grupo_balas):
-                enemigo_golpeado = bala.update(list(remote_enemies.values()), mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if enemigo_golpeado:
-                    # Futuro: Reportar daño de bala de jugador a enemigo
-                    pass
 
         # ==============================================================
         # LÓGICA COMÚN PARA AMBOS MODOS (DIBUJADO Y FIN DE PARTIDA)
@@ -734,7 +741,12 @@ while run:
 
         # Dibujar balas, items y textos de daño
         for bala in grupo_balas: bala.dibujar(pantalla, posicion_pantalla)
+        
         for bala_enemiga in grupo_balas_enemigas: bala_enemiga.dibujar(pantalla, posicion_pantalla)
+        
+        for bala in remote_bullets.values():
+            pantalla.blit(bala.image, (bala.rect.x - posicion_pantalla[0], bala.rect.y - posicion_pantalla[1]))
+            
         for texto in grupo_textos_daño:
             pantalla.blit(texto.image, (texto.rect.x - posicion_pantalla[0], texto.rect.y - posicion_pantalla[1]))
         
@@ -747,7 +759,7 @@ while run:
                     temp_img = arbusto[0].copy()
                     temp_img.set_alpha(150)
                     pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
-                    break 
+                    
         
         if tanques_aliados:
             vida_jugador(tanques_aliados[0])
@@ -845,7 +857,10 @@ while run:
                 if event.key == pygame.K_s: pressed["down"] = True
                 if event.key == pygame.K_a: pressed["left"] = True
                 if event.key == pygame.K_d: pressed["right"] = True
-                if event.key == pygame.K_SPACE: pressed["fire"] = True
+                if event.key == pygame.K_SPACE: 
+                    pressed["fire"] = True
+                    if jugadores_seleccionados > 1:
+                        net.solicitar_disparo()
             
             if event.type == pygame.KEYUP:
                 if event.key == pygame.K_w: pressed["up"] = False

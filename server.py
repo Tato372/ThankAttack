@@ -26,19 +26,32 @@ class PlayerState:
         self.spawn_x, self.spawn_y = x, y
         self.hp, self.vidas, self.rot = 90, 3, 0
         self.inputs = []
+        self.ultimo_disparo = 0
 
 class EnemyState:
     def __init__(self, id, tipo, x, y):
         self.id, self.tipo, self.x, self.y = id, tipo, x, y
         stats = constantes.TANQUE_STATS[tipo]
-        self.hp, self.rot = stats["vida"], 90
+        self.hp = stats["vida"]
+        self.rot = 90
         self.speed = stats["velocidad"]
+        self.ultimo_disparo = 0
+        self.cooldown_disparo = stats["cooldown_disparo"]
+
+class BulletState:
+    def __init__(self, id, owner_id, x, y, rot, dano):
+        self.id, self.owner_id = id, owner_id
+        self.x, self.y, self.rot = x, y, rot
+        self.dano = dano
+        self.dx = math.cos(math.radians(rot)) * constantes.VELOCIDAD_BALA
+        self.dy = -math.sin(math.radians(rot)) * constantes.VELOCIDAD_BALA
 
 class GameState:
     def __init__(self, partida_info):
         self.id = partida_info["id"]
         self.players = {}
         self.enemies = {}
+        self.bullets = {}
         self.fortress_hp = 200
         self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
         self.enemy_spawn_list = partida_info["lista_enemigos"]
@@ -50,7 +63,6 @@ class GameState:
         if partida_info.get("cliente"):
             px2, py2 = partida_info["spawn_p2"]
             self.players[partida_info["cliente"]] = PlayerState(partida_info["cliente"], px2, py2)
-
 
 # --- Funciones de Notificación ---
 async def notificar_a_jugador(player_id, mensaje):
@@ -87,6 +99,7 @@ async def game_loop():
         for id_partida, partida in list(partidas.items()):
             if partida.get("estado") == "en_juego" and "game_state" in partida:
                 game = partida["game_state"]
+                tiempo_actual_ms = time.time() * 1000
                 
                 # --- 1. Spawnear Nuevos Enemigos ---
                 if len(game.enemies) < 4 and game.enemy_spawn_list:
@@ -103,7 +116,7 @@ async def game_loop():
                 all_player_rects = {pid: pygame.Rect(0,0, *player_size, center=(p.x, p.y)) for pid, p in game.players.items()}
                 all_enemy_rects = {eid: pygame.Rect(0,0, *player_size, center=(e.x, e.y)) for eid, e in game.enemies.items()}
 
-                # --- 3. Actualizar IA y Movimiento de Enemigos (Lógica Mejorada) ---
+                # --- 3. Actualizar IA, Movimiento y Disparos de Enemigos ---
                 for enemy_id, enemy in game.enemies.items():
                     if not game.players: continue
                     
@@ -124,24 +137,35 @@ async def game_loop():
                     elif dy_ideal > 0: enemy.rot = 90
                     elif dy_ideal < 0: enemy.rot = 270
 
-                    sensor = enemy_rect.move(dx_ideal, dy_ideal)
+                    sensor = enemy_rect.move(dx_ideal * 2, dy_ideal * 2)
                     mov_x, mov_y = dx_ideal, dy_ideal
 
                     if sensor.collidelist(game.obstaculos) != -1 or any(sensor.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id):
-                        if dx_ideal != 0: mov_x, mov_y = 0, enemy.speed if closest_player.y > enemy.y else -enemy.speed
-                        else: mov_x, mov_y = enemy.speed if closest_player.x > enemy.x else -enemy.speed
+                        if dx_ideal != 0:
+                            mov_x, mov_y = 0, enemy.speed if closest_player.y > enemy.y else -enemy.speed
+                        else:
+                            mov_x, mov_y = enemy.speed if closest_player.x > enemy.x else -enemy.speed, 0
                     
                     original_ex, original_ey = enemy.x, enemy.y
                     
                     enemy.x += mov_x
                     enemy_rect.centerx = enemy.x
-                    if enemy_rect.collidelist(game.obstaculos) != -1 or any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or enemy_rect.collidelist(list(all_player_rects.values())) != -1:
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
+                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or \
+                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
                         enemy.x = original_ex
 
                     enemy.y += mov_y
                     enemy_rect.centery = enemy.y
-                    if enemy_rect.collidelist(game.obstaculos) != -1 or any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or enemy_rect.collidelist(list(all_player_rects.values())) != -1:
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
+                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or \
+                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
                         enemy.y = original_ey
+                    
+                    if tiempo_actual_ms - enemy.ultimo_disparo > enemy.cooldown_disparo:
+                        bullet_id = str(uuid.uuid4())
+                        game.bullets[bullet_id] = BulletState(bullet_id, enemy_id, enemy.x, enemy.y, enemy.rot, 10)
+                        enemy.ultimo_disparo = tiempo_actual_ms
                 
                 # --- 4. Mover Jugadores y Comprobar Colisiones ---
                 all_enemy_rects_list = list(all_enemy_rects.values())
@@ -158,17 +182,53 @@ async def game_loop():
                         if keys.get("right"): player.x += speed; player.rot = 0
                         
                         player_rect_actual.centerx = player.x
-                        if player_rect_actual.collidelist(game.obstaculos) != -1 or player_rect_actual.collidelist(otros_jugadores_rects) != -1 or player_rect_actual.collidelist(all_enemy_rects_list) != -1:
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
+                           player_rect_actual.collidelist(otros_jugadores_rects) != -1 or \
+                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.x = original_x
 
                         if keys.get("up"): player.y -= speed; player.rot = 270
                         if keys.get("down"): player.y += speed; player.rot = 90
                         
                         player_rect_actual.centery = player.y
-                        if player_rect_actual.collidelist(game.obstaculos) != -1 or player_rect_actual.collidelist(otros_jugadores_rects) != -1 or player_rect_actual.collidelist(all_enemy_rects_list) != -1:
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
+                           player_rect_actual.collidelist(otros_jugadores_rects) != -1 or \
+                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.y = original_y
                 
-                # --- 5. Lógica de Muerte y Reaparición (Respawn) ---
+                # --- 5. Actualizar y Colisionar Balas ---
+                bullet_size = (6, 6)
+                for bullet_id, bullet in list(game.bullets.items()):
+                    bullet.x += bullet.dx
+                    bullet.y += bullet.dy
+                    bullet_rect = pygame.Rect(0,0, *bullet_size, center=(bullet.x, bullet.y))
+
+                    if not (0 < bullet.x < constantes.MAPA_ANCHO and 0 < bullet.y < constantes.MAPA_ALTO) or \
+                       bullet_rect.collidelist(game.obstaculos) != -1:
+                        del game.bullets[bullet_id]
+                        continue
+                    
+                    bullet_hit = False
+                    if bullet.owner_id in game.enemies:
+                        for pid, player_rect in all_player_rects.items():
+                            if bullet_rect.colliderect(player_rect):
+                                game.players[pid].hp = max(0, game.players[pid].hp - bullet.dano)
+                                del game.bullets[bullet_id]
+                                bullet_hit = True
+                                break
+                    elif bullet.owner_id in game.players:
+                        for eid, enemy_rect in all_enemy_rects.items():
+                            if bullet_rect.colliderect(enemy_rect):
+                                game.enemies[eid].hp = max(0, game.enemies[eid].hp - bullet.dano)
+                                if game.enemies[eid].hp <= 0:
+                                    del game.enemies[eid]
+                                del game.bullets[bullet_id]
+                                bullet_hit = True
+                                break
+                    if bullet_hit:
+                        continue
+
+                # --- 6. Lógica de Muerte y Reaparición (Respawn) ---
                 for player in game.players.values():
                     if player.hp <= 0 and player.vidas > 0:
                         player.vidas -= 1
@@ -178,11 +238,12 @@ async def game_loop():
                         else:
                             player.hp = 0
 
-                # --- 6. Enviar Snapshot Completo a los Clientes ---
+                # --- 7. Enviar Snapshot Completo a los Clientes ---
                 snapshot = {
                     "type": "snapshot", "state": { 
                         "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas} for p in game.players.values()],
                         "enemies": [{"id": e.id, "tipo": e.tipo, "x": e.x, "y": e.y, "rot": e.rot, "hp": e.hp} for e in game.enemies.values()],
+                        "bullets": [{"id": b.id, "x": b.x, "y": b.y} for b in game.bullets.values()],
                         "fortress_hp": game.fortress_hp
                     }
                 }
@@ -275,6 +336,17 @@ async def websocket_endpoint(ws: WebSocket):
                             if objetivo_id in game.players:
                                 target_player = game.players[objetivo_id]
                                 target_player.hp = max(0, target_player.hp - msg.get("daño", 0))
+                        break
+            elif tipo_mensaje == "disparar":
+                for p in partidas.values():
+                    if p.get("estado") == "en_juego" and id_jugador in p["game_state"].players:
+                        game = p["game_state"]
+                        player = game.players[id_jugador]
+                        tiempo_actual_ms = time.time() * 1000
+                        if tiempo_actual_ms - player.ultimo_disparo > constantes.DISPARO_COOLDOWN:
+                            bullet_id = str(uuid.uuid4())
+                            game.bullets[bullet_id] = BulletState(bullet_id, id_jugador, player.x, player.y, player.rot, 10)
+                            player.ultimo_disparo = tiempo_actual_ms
                         break
 
     except WebSocketDisconnect:

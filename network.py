@@ -93,6 +93,9 @@ class NetworkManager:
             "daño": daño,
             "es_fortaleza": es_fortaleza
         })
+    
+    def solicitar_disparo(self):
+        self.send_q.put({"type": "disparar"})
         
     def pedir_lista_partidas(self):
         self.send_q.put({"type": "pedir_lista_partidas"})
