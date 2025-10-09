@@ -162,6 +162,7 @@ def iniciar_partida(dificultad, num_jugadores):
         py1 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
         animaciones, 90, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
     )
+    tanque_jugador1.id_red = mi_id_de_red
     tanques.append(tanque_jugador1)
     tanques_aliados.append(tanque_jugador1)
 
@@ -334,6 +335,7 @@ tanques = []
 vidas_jugador = 3
 muros_originales = {}
 tiempo_inicio_partida = 0
+mi_id_de_red = None
 # <-- CAMBIO: Variables para la generación de bonus -->
 ultimo_spawn_convencional = pygame.time.get_ticks()
 ultimo_spawn_especial = pygame.time.get_ticks()
@@ -675,6 +677,9 @@ while run:
             
             # Procesar mensajes del servidor
             for msg in net.poll():
+                if tipo_mensaje == "assign_id":
+                    net.player_id = msg.get("player_id")
+                    mi_id_de_red = net.player_id
                 if msg["type"] == "snapshot":
                     state = msg["state"]
                     for p_data in state["players"]:
@@ -769,21 +774,19 @@ while run:
                     grupo_textos_daño.add(texto_daño)
             
             # Actualizar balas enemigas
-            for bala_enemiga in grupo_balas_enemigas:
-                if fortaleza.rect.colliderect(bala_enemiga.rect):
-                    net.reportar_daño(None, 10, es_fortaleza=True)
-                    fortaleza.energia -= 10
-                    bala_enemiga.kill()
-                # MODIFICADO: Las balas enemigas ahora apuntan a todos los jugadores aliados
-                daño, posicion_daño = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if daño:
-                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
-                    grupo_textos_daño.add(texto_daño)
-                
-                jugador_golpeado = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles)
+            for bala_enemiga in list(grupo_balas_enemigas): # Usamos list() por si la bala se elimina
+                # Primero, revisamos si la bala golpeó a un jugador
+                jugador_golpeado = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
                 if jugador_golpeado:
-                    # El id_red lo debes asignar al crear el tanque
-                    net.reportar_daño(jugador_golpeado.id_red, 10) 
+                    print(f"INFO: Jugador {jugador_golpeado.id_red} fue golpeado. Reportando al servidor.")
+                    net.reportar_daño(jugador_golpeado.id_red, bala_enemiga.daño)
+                    # No necesitamos hacer nada más, la bala ya se eliminó dentro de update()
+                    continue # Pasamos a la siguiente bala
+
+                # Si no golpeó a un jugador, revisamos si golpeó la fortaleza
+                if fortaleza.rect.colliderect(bala_enemiga.rect):
+                    net.reportar_daño(None, bala_enemiga.daño, es_fortaleza=True)
+                    bala_enemiga.kill()
 
             # Lógica de recolección de items (para todos los jugadores)
             for item in list(grupo_items): # Usamos list() para poder modificar el grupo mientras se itera

@@ -45,6 +45,7 @@ class Tanque():
         self.target_pos = (x, y)
         self.last_pos = (x, y)
         self.last_update_time = pygame.time.get_ticks()
+        self.id_red = None
         
     def es_visible(self, objetivo, arbustos, obstaculos):
         """Comprueba si un objetivo es visible, considerando arbustos y muros."""

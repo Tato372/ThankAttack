@@ -60,50 +60,39 @@ class Bullet(pygame.sprite.Sprite):
         self.imagen_original = image
         self.angulo = angulo
         self.image = pygame.transform.rotate(self.imagen_original, self.angulo)
-        self.rect = self.image.get_rect()
-        self.rect.center = tanque.forma.center
-        #Calculo de la velocidad
+        self.rect = self.image.get_rect(center=tanque.forma.center)
         self.delta_x = math.cos(math.radians(self.angulo)) * constantes.VELOCIDAD_BALA
-        self.delta_y = math.sin(math.radians(-self.angulo)) * constantes.VELOCIDAD_BALA
-        # <-- CAMBIO: El daño se define al crear la bala -->
-        self.daño_base = 10
-        self.daño = self.daño_base * 2 if potenciado else self.daño_base
-        
-    def update(self, tanques, obstaculos_tiles, fortaleza_protegida=False):
-        daño = 0
-        posicion_daño = None
+        self.delta_y = -math.sin(math.radians(self.angulo)) * constantes.VELOCIDAD_BALA
+        self.daño = 20 if potenciado else 10
+
+    def update(self, tanques_objetivo, obstaculos_tiles, fortaleza_protegida=False):
         self.rect.x += self.delta_x
-        self.rect.y -= self.delta_y
+        self.rect.y += self.delta_y
+
+        # Verificar colisión con tanques objetivo
+        for tanque in tanques_objetivo:
+            if tanque.vivo and tanque.forma.colliderect(self.rect):
+                self.kill()
+                # Devolvemos el tanque que fue golpeado
+                return tanque
         
-        #Verificar si hay colision con un tanque
-        for tanque in tanques:
-            if tanque.forma.colliderect(self.rect):
-                if tanque.escudo_activo:
-                    self.kill()
-                    break
-                else:
-                    self.kill()
-                    return tanque
-        
-        #Verificar si hay colision con un obstaculo
+        # Verificar colisión con obstáculos
         for obstaculo in obstaculos_tiles:
             if obstaculo[1].colliderect(self.rect):
-                # <-- CAMBIO: Si la fortaleza está protegida, no dañar los muros -->
-                if fortaleza_protegida and obstaculo[4] == -2: # Usamos -2 para identificar los muros de la fortaleza
-                        self.kill()
-                        break
-                if obstaculo[4] > 0:
+                if fortaleza_protegida and len(obstaculo) > 5 and obstaculo[5]: # es muro de fortaleza
+                    self.kill()
+                    return None
+                if obstaculo[4] > 0: # vida del obstáculo
                     obstaculo[4] -= 1
                     if obstaculo[4] == 0:
                         obstaculos_tiles.remove(obstaculo)
                 self.kill()
-                break
+                return None
         
-        return daño, posicion_daño
+        # Si no golpeó nada, no devuelve nada
+        return None
 
     def dibujar(self, pantalla, posicion_pantalla):
         pantalla.blit(self.image, (self.rect.x - posicion_pantalla[0], self.rect.y - posicion_pantalla[1]))
-        #Muestra el cuadro de la bala (funciona como hitbox)
-        #pygame.draw.rect(pantalla, constantes.COLOR_CAÑON, self.rect, 1)
     
     
