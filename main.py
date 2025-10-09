@@ -34,7 +34,7 @@ info_partida = {
 jugador1_listo = False
 jugador2_listo = False
 
-net = NetworkManager("ws://172.24.82.196:8000/ws")
+net = NetworkManager("ws://172.24.86.164:8000/ws")
 
 pantalla = pygame.display.set_mode((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
 pygame.display.set_caption("Tank-Atackk")
