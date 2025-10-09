@@ -78,43 +78,35 @@ async def game_loop():
                 
                 speed = 4
                 player_size = (int(constantes.ANCHO_TANQUE * constantes.ESCALA_TANQUE_ANCHO), int(constantes.ALTO_TANQUE * constantes.ESCALA_TANQUE_ALTO))
-
-                for player in game.players.values():
-                    # Crear rect del jugador para colisiones
-                    player_rect = pygame.Rect(0, 0, player_size[0], player_size[1])
-                    player_rect.center = (player.x, player.y)
-
+                todos_los_rects_jugadores = [pygame.Rect(0, 0, *player_size, center=(p.x, p.y)) for p in game.players.values()]
+                
+                for i, player in enumerate(game.players.values()):
+                    player_rect_actual = todos_los_rects_jugadores[i]
+                    
                     while player.inputs:
                         keys = player.inputs.pop(0)
                         
-                        # Guardar posición original
                         original_x, original_y = player.x, player.y
 
                         # Mover en X
-                        if keys.get("left"): 
-                            player.x -= speed
-                            player.rot = 180
-                        if keys.get("right"): 
-                            player.x += speed
-                            player.rot = 0
+                        if keys.get("left"): player.x -= speed; player.rot = 180
+                        if keys.get("right"): player.x += speed; player.rot = 0
                         
-                        player_rect.centerx = player.x
-                        # Comprobar colisión en X
-                        if player_rect.collidelist(game.obstaculos) != -1:
-                            player.x = original_x # Si choca, revertir movimiento en X
+                        player_rect_actual.centerx = player.x
+                        # Comprobar colisión en X con obstáculos Y OTROS JUGADORES
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
+                           any(player_rect_actual.colliderect(r) for j, r in enumerate(todos_los_rects_jugadores) if i != j):
+                            player.x = original_x
 
                         # Mover en Y
-                        if keys.get("up"): 
-                            player.y -= speed
-                            player.rot = 270
-                        if keys.get("down"): 
-                            player.y += speed
-                            player.rot = 90
+                        if keys.get("up"): player.y -= speed; player.rot = 270
+                        if keys.get("down"): player.y += speed; player.rot = 90
 
-                        player_rect.centery = player.y
-                        # Comprobar colisión en Y
-                        if player_rect.collidelist(game.obstaculos) != -1:
-                            player.y = original_y # Si choca, revertir movimiento en Y
+                        player_rect_actual.centery = player.y
+                        # Comprobar colisión en Y con obstáculos Y OTROS JUGADORES
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
+                           any(player_rect_actual.colliderect(r) for j, r in enumerate(todos_los_rects_jugadores) if i != j):
+                            player.y = original_y
 
                 # Enviar el estado actualizado (snapshot)
                 snapshot = {

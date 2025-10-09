@@ -40,6 +40,10 @@ class Tanque():
         # Para enemigos (afectados por el reloj)
         self.ralentizado = False
         self.ralentizado_tiempo_final = 0
+        # Atributos para la interpolación del movimiento en red
+        self.target_pos = (x, y)
+        self.last_pos = (x, y)
+        self.last_update_time = pygame.time.get_ticks()
         
     def es_visible(self, objetivo, arbustos, obstaculos):
         """Comprueba si un objetivo es visible, considerando arbustos y muros."""
@@ -291,3 +295,17 @@ class Tanque():
         self.forma.right = min(constantes.MAPA_ANCHO, self.forma.right)
         self.forma.top = max(0, self.forma.top)
         self.forma.bottom = min(constantes.MAPA_ALTO, self.forma.bottom)
+
+    # --- PEGA EL NUEVO MÉTODO COMPLETO AQUÍ ---
+    def interpolate_position(self):
+        # Interpolar suavemente hacia la posición objetivo del servidor
+        interp_time = 100 # ms, un poco más que el intervalo del servidor (1000/20 = 50ms)
+        
+        tiempo_desde_update = pygame.time.get_ticks() - self.last_update_time
+        t = min(1.0, tiempo_desde_update / interp_time)
+
+        # Interpolar linealmente (Lerp)
+        new_x = self.last_pos[0] + (self.target_pos[0] - self.last_pos[0]) * t
+        new_y = self.last_pos[1] + (self.target_pos[1] - self.last_pos[1]) * t
+        
+        self.forma.center = (new_x, new_y)
