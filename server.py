@@ -75,7 +75,8 @@ class GameState:
             rect = pygame.Rect(o[0], o[1], o[2], o[3])
             vida = o[4] if len(o) > 4 else -1
             destruible = vida > 0
-            self.obstaculos.append({"rect": rect, "vida": vida, "destruible": destruible})
+            tipo = o[5] if len(o) > 5 else 5   # 👈 agrega el tipo (4 = árbol, 5 = pared)
+            self.obstaculos.append({"rect": rect, "vida": vida, "destruible": destruible, "tipo": tipo})
         self.enemy_spawn_list = partida_info["lista_enemigos"]
         self.enemy_spawn_points = partida_info["spawns_enemigos"]
         self.fortress_rect = pygame.Rect(0, 0, constantes.TAMAÑO_REJILLA * 7, constantes.TAMAÑO_REJILLA * 7)
@@ -93,7 +94,7 @@ class GameState:
 def es_visible_servidor(punto_origen, rect_objetivo, obstaculos):
     linea_vision = (punto_origen, rect_objetivo.center)
     for obs in obstaculos:
-        if obs.clipline(linea_vision):
+        if obs["rect"].clipline(linea_vision):  # ✅ usar obs["rect"]
             return False
     return True
 
@@ -167,14 +168,15 @@ async def game_loop():
                         game.items[item_id] = ItemState(item_id, tipo_item, px, py)
                         print(f"[BONUS] Apareció un item ESPECIAL: {tipo_item}")
                 
-                # --- Lógica de aparición de enemigos en oleadas ---
+                # --- Aparición de enemigos ---
                 if not game.enemies and game.enemy_spawn_list and not game.oleada_activa:
                     game.oleada_activa = True
                     game.tiempo_ultima_oleada = time.time()
+                    print("[OLEADA] Preparando siguiente oleada...")
 
-                # Spawnear 4 enemigos cada 10 segundos después de limpiar la oleada anterior
-                if game.oleada_activa and time.time() - game.tiempo_ultima_oleada > 10:
+                if game.oleada_activa and time.time() - game.tiempo_ultima_oleada > 2:  # antes era 10
                     num_a_spawnear = min(4, len(game.enemy_spawn_list))
+                    print(f"[OLEADA] Spawneando {num_a_spawnear} enemigos...")
                     puntos_disponibles = random.sample(game.enemy_spawn_points, min(len(game.enemy_spawn_points), num_a_spawnear))
 
                     for i in range(num_a_spawnear):
@@ -184,6 +186,7 @@ async def game_loop():
                         y = spawn_point[1] * constantes.TAMAÑO_REJILLA + 16
                         enemy_id = str(uuid.uuid4())
                         game.enemies[enemy_id] = EnemyState(enemy_id, tipo_enemigo, x, y)
+                        print(f"[SPAWN] Enemigo tipo {tipo_enemigo} en {spawn_point}")
 
                     game.oleada_activa = False
 
@@ -218,27 +221,40 @@ async def game_loop():
                         sensor = enemy.rect.copy()
                         sensor.move_ip(mov_x, mov_y)
 
-                        todos_los_obstaculos_rects = game.obstaculos + list(all_enemy_rects.values()) + list(all_player_rects.values()) + [game.fortress_rect]
-                        
+                        # Recolectar todos los rects válidos de obstáculos y entidades
+                        todos_los_obstaculos_rects = [obs["rect"] for obs in game.obstaculos] \
+                                                    + list(all_enemy_rects.values()) \
+                                                    + list(all_player_rects.values()) \
+                                                    + [game.fortress_rect]
+
+                        # Detectar colisión del sensor con cualquier obstáculo
                         colision = any(obs_rect != enemy.rect and sensor.colliderect(obs_rect) for obs_rect in todos_los_obstaculos_rects)
-                        
+
                         if colision:
-                            if dx_ideal != 0: mov_x, mov_y = 0, enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
-                            else: mov_y, mov_x = 0, enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
-                        
+                            if dx_ideal != 0:
+                                mov_x, mov_y = 0, enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
+                            else:
+                                mov_y, mov_x = 0, enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
+
+                        # Movimiento y corrección final por colisión real
                         original_ex, original_ey = enemy.x, enemy.y
+
                         enemy.x += mov_x
                         enemy.rect.centerx = int(enemy.x)
                         for obs_rect in todos_los_obstaculos_rects:
                             if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
-                                enemy.x = original_ex; enemy.rect.centerx = int(original_ex); break
-                        
+                                enemy.x = original_ex
+                                enemy.rect.centerx = int(original_ex)
+                                break
+
                         enemy.y += mov_y
                         enemy.rect.centery = int(enemy.y)
                         for obs_rect in todos_los_obstaculos_rects:
                             if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
-                                enemy.y = original_ey; enemy.rect.centery = int(original_ey); break
-                        
+                                enemy.y = original_ey
+                                enemy.rect.centery = int(original_ey)
+                                break
+                            
                         if mov_x > 0: enemy.rot = 0
                         elif mov_x < 0: enemy.rot = 180
                         elif mov_y > 0: enemy.rot = 90
@@ -286,13 +302,15 @@ async def game_loop():
                             
                         player.rect.center = (int(player.x), int(player.y))
                         
-                        # Optimización de colisión de jugador
+                        # Recolectar todos los rects válidos
+                        todos_rects = [obs["rect"] for obs in game.obstaculos] + list(all_enemy_rects.values()) + [game.fortress_rect]
                         colision_jugador = False
-                        for obs_rect in game.obstaculos + list(all_enemy_rects.values()) + [game.fortress_rect]:
-                            if player.rect.colliderect(obs["rect"]):
+                        
+                        for rect in todos_rects:
+                            if player.rect.colliderect(rect):
                                 colision_jugador = True
                                 break
-                        
+
                         if colision_jugador:
                             player.x, player.y = original_x, original_y
                             player.rect.center = (int(original_x), int(original_y))
@@ -373,8 +391,10 @@ async def game_loop():
                     "fortaleza_escudo_hasta": game.fortaleza_escudo_hasta,
                     "reloj_activo": game.reloj_hasta > time.time(),
                     "obstaculos": [
-                                    {"x": o["rect"].x, "y": o["rect"].y, "w": o["rect"].width, "h": o["rect"].height, "vida": o["vida"]}
-                                    for o in game.obstaculos]
+                        {"x": o["rect"].x, "y": o["rect"].y, "w": o["rect"].width, "h": o["rect"].height, 
+                        "vida": o["vida"], "tipo": o["tipo"]}
+                        for o in game.obstaculos
+                    ]
                 }}
                 await notificar_a_partida(id_partida, snapshot)
                 

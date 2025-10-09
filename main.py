@@ -150,6 +150,10 @@ def iniciar_partida(dificultad, num_jugadores):
     if num_jugadores == 1:
         mundo.generar_enemigos(dificultad, num_jugadores, animaciones_enemigos)
         for enemigo in mundo.lista_enemigos:
+            # Líneas que debes agregar:
+            enemigo.animacion_muerte = animacion_muerte
+            enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
+
             tanques.append(enemigo)
             tanques_enemigos.append(enemigo)
     

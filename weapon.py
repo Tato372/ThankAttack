@@ -25,7 +25,7 @@ class Weapon():
         if tipo == 1:
         #Detectar el espacio para disparar
             if pygame.key.get_pressed()[pygame.K_SPACE] and self.disparada == False and (pygame.time.get_ticks() - self.ultimo_disparo) >= disparo_cooldown:
-                bala = Bullet(self.imagen_bala, tanque, self.angulo, tanque.potenciado_activo)
+                bala = Bullet(self.imagen_bala, tanque, -self.angulo, tanque.potenciado_activo)
                 self.disparada = True
                 self.ultimo_disparo = pygame.time.get_ticks()
             
