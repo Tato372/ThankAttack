@@ -36,6 +36,7 @@ class PlayerState:
         self.rect.center = (x, y)
         self.escudo_hasta = 0
         self.potenciado_hasta = 0
+        self.boost_hasta = 0 
 
 class EnemyState:
     def __init__(self, id, tipo, x, y):
@@ -43,7 +44,7 @@ class EnemyState:
         stats = constantes.TANQUE_STATS[tipo]
         self.hp = stats["vida"]
         self.rot = 90
-        self.speed = stats["velocidad"] * 2.5 # SOLUCIÓN 1: Aumentamos la velocidad base
+        self.speed = stats["velocidad"] * 2.5 
         self.ultimo_disparo = 0
         self.cooldown_disparo = stats["cooldown_disparo"]
         self.rect = pygame.Rect(0, 0, 26, 26)
@@ -64,7 +65,10 @@ class GameState:
         self.enemies = {}
         self.bullets = {}
         self.items = {}
-        self.ultimo_spawn_item = time.time()
+        self.ultimo_spawn_convencional = time.time()
+        self.ultimo_spawn_especial = time.time()
+        self.reloj_hasta = 0 
+        self.fortaleza_escudo_hasta = 0
         self.fortress_hp = 200
         self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
         self.enemy_spawn_list = partida_info["lista_enemigos"]
@@ -107,28 +111,55 @@ async def game_loop():
         for id_partida, partida in list(partidas.items()):
             if partida.get("estado") == "en_juego" and "game_state" in partida:
                 game = partida["game_state"]
-                tiempo_actual_ms = time.time() * 1000
                 
-                # --- Lógica de Spawning de Items ---
-                TIEMPO_SPAWN_ITEM = 60 # segundos
-                if time.time() - game.ultimo_spawn_item > TIEMPO_SPAWN_ITEM and len(game.items) < 3:
-                    game.ultimo_spawn_item = time.time()
+                # --- Lógica de Spawning de Items (Nueva y Corregida) ---
+                tiempo_actual = time.time()
+
+                # --- Bonus Convencional (cada 60 segundos) ---
+                if tiempo_actual - game.ultimo_spawn_convencional > 60 and len(game.items) < 5:
+                    game.ultimo_spawn_convencional = tiempo_actual
                     item_id = str(uuid.uuid4())
-
-                    # Elegir un tipo de item (ej. escudo o daño)
-                    tipo_item = random.choice([constantes.ITEM_ESCUDO, constantes.ITEM_DISPARO_POTENCIADO])
-
-                    # Buscar una posición válida que no esté en un obstáculo
+                    
+                    tipo_item = random.choice([
+                        constantes.ITEM_ESCUDO,
+                        constantes.ITEM_DISPARO_POTENCIADO,
+                        constantes.ITEM_RELOJ
+                    ])
+                    
                     while True:
                         px = random.randint(32, constantes.MAPA_ANCHO - 32)
                         py = random.randint(32, constantes.MAPA_ALTO - 32)
-                        item_rect_temp = pygame.Rect(0,0,32,32, center=(px,py))
+                        item_rect_temp = pygame.Rect(0, 0, 32, 32, center=(px, py))
                         if item_rect_temp.collidelist(game.obstaculos) == -1:
-                            break # Posición válida encontrada
-
-                    game.items[item_id] = ItemState(item_id, tipo_item, px, py)
+                            break
                     
-                # SOLUCIÓN 4: Lógica de aparición sin apilamiento
+                    game.items[item_id] = ItemState(item_id, tipo_item, px, py)
+                    print(f"[BONUS] Apareció un item convencional: {tipo_item}")
+
+                # --- Bonus Especial (cada 120 segundos, 50% de probabilidad) ---
+                if tiempo_actual - game.ultimo_spawn_especial > 120 and len(game.items) < 5:
+                    game.ultimo_spawn_especial = tiempo_actual
+                    if random.random() < 0.5: # 50% de probabilidad
+                        item_id = str(uuid.uuid4())
+                        
+                        tipo_item = random.choice([
+                            constantes.ITEM_BOMBA,
+                            constantes.ITEM_BOOST,
+                            constantes.ITEM_ESCUDO_FORTALEZA,
+                            constantes.ITEM_VIDA
+                        ])
+                        
+                        while True:
+                            px = random.randint(32, constantes.MAPA_ANCHO - 32)
+                            py = random.randint(32, constantes.MAPA_ALTO - 32)
+                            item_rect_temp = pygame.Rect(0, 0, 32, 32, center=(px, py))
+                            if item_rect_temp.collidelist(game.obstaculos) == -1:
+                                break
+                        
+                        game.items[item_id] = ItemState(item_id, tipo_item, px, py)
+                        print(f"[BONUS] Apareció un item ESPECIAL: {tipo_item}")
+                
+                # --- Lógica de aparición de enemigos ---
                 if len(game.enemies) < 4 and game.enemy_spawn_list:
                     num_a_spawnear = min(4 - len(game.enemies), len(game.enemy_spawn_list))
                     puntos_disponibles = random.sample(game.enemy_spawn_points, min(len(game.enemy_spawn_points), num_a_spawnear))
@@ -144,177 +175,147 @@ async def game_loop():
                 all_player_rects = {pid: p.rect for pid, p in game.players.items()}
                 all_enemy_rects = {eid: e.rect for eid, e in game.enemies.items()}
 
-                # --- IA DE ENEMIGOS MEJORADA ---
-                for enemy_id, enemy in game.enemies.items():
-                    if not game.players: continue
-                    
-                    # SOLUCIÓN 3 (RASTREO): Encontrar objetivos válidos
-                    jugadores_visibles = []
-                    for player in game.players.values():
-                        dist = math.hypot(player.x - enemy.x, player.y - enemy.y)
-                        if dist < constantes.RANGO_AGGRO_JUGADOR and es_visible_servidor(enemy.rect.center, player.rect, game.obstaculos):
-                            jugadores_visibles.append((dist, player))
-                    
-                    objetivo_movimiento = game.fortress_rect
-                    if jugadores_visibles:
-                        jugadores_visibles.sort(key=lambda item: item[0])
-                        objetivo_movimiento = jugadores_visibles[0][1].rect
-
-                    dx_ideal = 0
-                    dy_ideal = 0
-                    if math.hypot(enemy.x - objetivo_movimiento.centerx, enemy.y - objetivo_movimiento.centery) > enemy.rect.width:
-                        if abs(enemy.x - objetivo_movimiento.centerx) > abs(enemy.y - objetivo_movimiento.centery):
-                            dx_ideal = enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
-                        else:
-                            dy_ideal = enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
-
-                    mov_x, mov_y = dx_ideal, dy_ideal
-                    sensor = enemy.rect.copy()
-                    sensor.move_ip(mov_x, mov_y)
-
-                    # SOLUCIÓN 5: Los enemigos colisionan con jugadores
-                    todos_los_obstaculos_rects = game.obstaculos + list(all_enemy_rects.values()) + list(all_player_rects.values()) + [game.fortress_rect]
-                    
-                    colision = False
-                    for obs_rect in todos_los_obstaculos_rects:
-                        if obs_rect != enemy.rect and sensor.colliderect(obs_rect):
-                            colision = True
-                            break
-                    
-                    if colision:
-                        if dx_ideal != 0:
-                            mov_x = 0
-                            mov_y = enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
-                        else:
-                            mov_y = 0
-                            mov_x = enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
-                    
-                    original_ex, original_ey = enemy.x, enemy.y
-                    enemy.x += mov_x
-                    enemy.rect.centerx = enemy.x
-                    for obs_rect in todos_los_obstaculos_rects:
-                        if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
-                            enemy.x = original_ex; enemy.rect.centerx = original_ex; break
-                    
-                    enemy.y += mov_y
-                    enemy.rect.centery = enemy.y
-                    for obs_rect in todos_los_obstaculos_rects:
-                        if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
-                            enemy.y = original_ey; enemy.rect.centery = original_ey; break
-                    
-                    if mov_x > 0: enemy.rot = 0
-                    elif mov_x < 0: enemy.rot = 180
-                    elif mov_y > 0: enemy.rot = 90
-                    elif mov_y < 0: enemy.rot = 270
-
-                    if tiempo_actual_ms - enemy.ultimo_disparo > enemy.cooldown_disparo:
-                        objetivo_disparo = None
+                # --- IA DE ENEMIGOS ---
+                reloj_activo = game.reloj_hasta > time.time()
+                if not reloj_activo:
+                    for enemy_id, enemy in game.enemies.items():
+                        if not game.players: continue
+                        
+                        jugadores_visibles = []
+                        for player in game.players.values():
+                            dist = math.hypot(player.x - enemy.x, player.y - enemy.y)
+                            if dist < constantes.RANGO_AGGRO_JUGADOR and es_visible_servidor(enemy.rect.center, player.rect, game.obstaculos):
+                                jugadores_visibles.append((dist, player))
+                        
+                        objetivo_movimiento = game.fortress_rect
                         if jugadores_visibles:
-                            objetivo_disparo = jugadores_visibles[0][1].rect
-                        elif es_visible_servidor(enemy.rect.center, game.fortress_rect, game.obstaculos):
-                            objetivo_disparo = game.fortress_rect
+                            jugadores_visibles.sort(key=lambda item: item[0])
+                            objetivo_movimiento = jugadores_visibles[0][1].rect
 
-                        if objetivo_disparo:
-                            dx_shot = objetivo_disparo.centerx - enemy.x
-                            dy_shot = objetivo_disparo.centery - enemy.y
-                            enemy.rot = math.degrees(math.atan2(-dy_shot, dx_shot))
-                            
-                            bullet_id = str(uuid.uuid4())
-                            game.bullets[bullet_id] = BulletState(bullet_id, enemy_id, enemy.x, enemy.y, enemy.rot, 10)
-                            enemy.ultimo_disparo = tiempo_actual_ms
+                        dx_ideal, dy_ideal = 0, 0
+                        if math.hypot(enemy.x - objetivo_movimiento.centerx, enemy.y - objetivo_movimiento.centery) > enemy.rect.width:
+                            if abs(enemy.x - objetivo_movimiento.centerx) > abs(enemy.y - objetivo_movimiento.centery):
+                                dx_ideal = enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
+                            else:
+                                dy_ideal = enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
+
+                        mov_x, mov_y = dx_ideal, dy_ideal
+                        sensor = enemy.rect.copy()
+                        sensor.move_ip(mov_x, mov_y)
+
+                        todos_los_obstaculos_rects = game.obstaculos + list(all_enemy_rects.values()) + list(all_player_rects.values()) + [game.fortress_rect]
+                        
+                        colision = any(obs_rect != enemy.rect and sensor.colliderect(obs_rect) for obs_rect in todos_los_obstaculos_rects)
+                        
+                        if colision:
+                            if dx_ideal != 0: mov_x, mov_y = 0, enemy.speed if objetivo_movimiento.centery > enemy.y else -enemy.speed
+                            else: mov_y, mov_x = 0, enemy.speed if objetivo_movimiento.centerx > enemy.x else -enemy.speed
+                        
+                        original_ex, original_ey = enemy.x, enemy.y
+                        enemy.x += mov_x
+                        enemy.rect.centerx = int(enemy.x)
+                        for obs_rect in todos_los_obstaculos_rects:
+                            if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
+                                enemy.x = original_ex; enemy.rect.centerx = int(original_ex); break
+                        
+                        enemy.y += mov_y
+                        enemy.rect.centery = int(enemy.y)
+                        for obs_rect in todos_los_obstaculos_rects:
+                            if obs_rect != enemy.rect and enemy.rect.colliderect(obs_rect):
+                                enemy.y = original_ey; enemy.rect.centery = int(original_ey); break
+                        
+                        if mov_x > 0: enemy.rot = 0
+                        elif mov_x < 0: enemy.rot = 180
+                        elif mov_y > 0: enemy.rot = 90
+                        elif mov_y < 0: enemy.rot = 270
+
+                        if time.time() * 1000 - enemy.ultimo_disparo > enemy.cooldown_disparo:
+                            objetivo_disparo = None
+                            if jugadores_visibles: objetivo_disparo = jugadores_visibles[0][1].rect
+                            elif es_visible_servidor(enemy.rect.center, game.fortress_rect, game.obstaculos): objetivo_disparo = game.fortress_rect
+
+                            if objetivo_disparo:
+                                dx_shot = objetivo_disparo.centerx - enemy.x
+                                dy_shot = objetivo_disparo.centery - enemy.y
+                                enemy.rot = math.degrees(math.atan2(-dy_shot, dx_shot))
+                                bullet_id = str(uuid.uuid4())
+                                game.bullets[bullet_id] = BulletState(bullet_id, enemy_id, enemy.x, enemy.y, enemy.rot, 10)
+                                enemy.ultimo_disparo = time.time() * 1000
 
                 # --- Mover Jugadores ---
                 for player in game.players.values():
-                    # --- Lógica de Items y Bonus del Jugador ---
-                    tiempo_actual = time.time()
-
                     # Recoger items
                     for item_id, item in list(game.items.items()):
                         if player.rect.colliderect(item.rect):
-                            if item.tipo == constantes.ITEM_ESCUDO:
-                                player.escudo_hasta = tiempo_actual + 15 # 15 segundos de escudo
-                            elif item.tipo == constantes.ITEM_DISPARO_POTENCIADO:
-                                player.potenciado_hasta = tiempo_actual + 15 # 15 segundos de daño
-
-                            del game.items[item_id] # Eliminar item recogido
-                            break
-
-                    # Comprobar si los bonus han expirado
-                    es_potenciado = player.potenciado_hasta > tiempo_actual
-                    es_escudado = player.escudo_hasta > tiempo_actual
+                            if item.tipo == constantes.ITEM_ESCUDO: player.escudo_hasta = time.time() + constantes.DURACION_BONUS / 1000
+                            elif item.tipo == constantes.ITEM_DISPARO_POTENCIADO: player.potenciado_hasta = time.time() + constantes.DURACION_BONUS / 1000
+                            elif item.tipo == constantes.ITEM_VIDA: player.vidas = min(player.vidas + 1, 3)
+                            elif item.tipo == constantes.ITEM_BOOST: player.boost_hasta = time.time() + constantes.DURACION_BONUS / 1000
+                            elif item.tipo == constantes.ITEM_RELOJ: game.reloj_hasta = time.time() + constantes.DURACION_RELOJ / 1000
+                            elif item.tipo == constantes.ITEM_BOMBA: game.enemies.clear()
+                            elif item.tipo == constantes.ITEM_ESCUDO_FORTALEZA: game.fortaleza_escudo_hasta = time.time() + constantes.DURACION_ESCUDO_FORTALEZA / 1000
+                            del game.items[item_id]; break
                     
-                    if player.rect.left < 0:
-                        player.rect.left = 0
-                    if player.rect.right > constantes.MAPA_ANCHO:
-                        player.rect.right = constantes.MAPA_ANCHO
-                    if player.rect.top < 0:
-                        player.rect.top = 0
-                    if player.rect.bottom > constantes.MAPA_ALTO:
-                        player.rect.bottom = constantes.MAPA_ALTO
-                    # Actualizar las coordenadas x, y basadas en el rect corregido
-                    player.x, player.y = player.rect.center
-                    player.rect.center = (player.x, player.y)
+                    # Procesar inputs de movimiento
                     while player.inputs:
                         keys = player.inputs.pop(0)
                         original_x, original_y = player.x, player.y
                         
-                        if keys.get("left"): 
-                            player.x -= 4
-                            player.rot = 180
-                        elif keys.get("right"): 
-                            player.x += 4
-                            player.rot = 0
-                        elif keys.get("up"): 
-                            player.y -= 4 
-                            player.rot = 270
-                        elif keys.get("down"): 
-                            player.y += 4
-                            player.rot = 90
+                        es_boosteado = player.boost_hasta > time.time()
+                        velocidad = constantes.VELOCIDAD * 1.5 if es_boosteado else constantes.VELOCIDAD
+
+                        if keys.get("left"): player.x -= velocidad; player.rot = 180
+                        elif keys.get("right"): player.x += velocidad; player.rot = 0
+                        elif keys.get("up"): player.y -= velocidad; player.rot = 270
+                        elif keys.get("down"): player.y += velocidad; player.rot = 90
                             
-                        player.rect.centery = player.y
-                        player.rect.centerx = player.x
+                        player.rect.center = (int(player.x), int(player.y))
+                        
                         for obs_rect in game.obstaculos + list(all_enemy_rects.values()) + [game.fortress_rect]:
-                            if player.rect.colliderect(obs_rect): player.x = original_x; break
-                        for obs_rect in game.obstaculos + list(all_enemy_rects.values()) + [game.fortress_rect]:
-                            if player.rect.colliderect(obs_rect): player.y = original_y; break
-                    player.rect.center = (player.x, player.y)
+                            if player.rect.colliderect(obs_rect):
+                                player.x, player.y = original_x, original_y
+                                player.rect.center = (int(original_x), int(original_y))
+                                break
+                    
+                    # Limitar al mapa
+                    player.rect.left = max(0, player.rect.left)
+                    player.rect.right = min(constantes.MAPA_ANCHO, player.rect.right)
+                    player.rect.top = max(0, player.rect.top)
+                    player.rect.bottom = min(constantes.MAPA_ALTO, player.rect.bottom)
+                    player.x, player.y = player.rect.centerx, player.rect.centery
 
                 # --- Actualizar Balas ---
                 for bullet_id, bullet in list(game.bullets.items()):
+                    # <<<<<<<<<<<<<<< SOLUCIÓN DEFINITIVA A LAS BALAS >>>>>>>>>>>>>>>
+                    hit = False # Reiniciar la variable para CADA bala
+
                     bullet.x += bullet.dx
                     bullet.y += bullet.dy
                     bullet_rect = pygame.Rect(0,0, 6, 6, center=(int(bullet.x), int(bullet.y)))
                     
                     if not (0 < bullet.x < constantes.MAPA_ANCHO and 0 < bullet.y < constantes.MAPA_ALTO):
-                        del game.bullets[bullet_id]
-                        continue
+                        del game.bullets[bullet_id]; continue
                     
-                    # SOLUCIÓN 2: Las balas de jugadores chocan con obstáculos
                     if bullet_rect.collidelist(game.obstaculos) != -1:
-                        del game.bullets[bullet_id]
-                        continue
+                        del game.bullets[bullet_id]; continue
 
-                    if bullet_rect.colliderect(game.fortress_rect):
+                    fortaleza_escudada = game.fortaleza_escudo_hasta > time.time()
+                    if not fortaleza_escudada and bullet_rect.colliderect(game.fortress_rect):
                         game.fortress_hp = max(0, game.fortress_hp - bullet.dano)
-                        del game.bullets[bullet_id]
-                        continue
+                        del game.bullets[bullet_id]; continue
 
-                    hit = False
                     if bullet.owner_id in game.enemies:
                         for pid, player in game.players.items():
-                            # SOLUCIÓN 3 (DAÑO FANTASMA): Hitbox reducido
-                            es_escudado = player.escudo_hasta > time.time() # Comprobar escudo
+                            es_escudado = player.escudo_hasta > time.time()
                             if not es_escudado and bullet_rect.colliderect(player.rect.inflate(-8, -8)):
                                 player.hp = max(0, player.hp - bullet.dano)
                                 del game.bullets[bullet_id]
                                 hit = True; break
-
                     elif bullet.owner_id in game.players:
-                        for eid, enemy_rect in all_enemy_rects.items():
-                            if bullet_rect.colliderect(enemy_rect):
-                                if eid in game.enemies:
-                                    game.enemies[eid].hp = max(0, game.enemies[eid].hp - bullet.dano)
-                                    if game.enemies[eid].hp <= 0: del game.enemies[eid]
+                        for eid, enemy in list(game.enemies.items()):
+                            if bullet_rect.colliderect(enemy.rect):
+                                enemy.hp = max(0, enemy.hp - bullet.dano)
+                                if enemy.hp <= 0: del game.enemies[eid]
                                 del game.bullets[bullet_id]
                                 hit = True; break
                     if hit: continue
@@ -328,20 +329,23 @@ async def game_loop():
                             player.x, player.y = player.spawn_x, player.spawn_y
 
                 # --- Enviar Snapshot ---
-                snapshot = {"type": "snapshot", "state": { 
-                    "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas, 
-                                "escudo_hasta": p.escudo_hasta, "potenciado_hasta": p.potenciado_hasta} for p in game.players.values()], # AÑADIDO "escudo"
+                snapshot = {"type": "snapshot", "state": {
+                    "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas,
+                                 "escudo_hasta": p.escudo_hasta, "potenciado_hasta": p.potenciado_hasta,
+                                 "boost_hasta": p.boost_hasta} for p in game.players.values()],
                     "enemies": [{"id": e.id, "tipo": e.tipo, "x": e.x, "y": e.y, "rot": e.rot, "hp": e.hp} for e in game.enemies.values()],
                     "bullets": [{"id": b.id, "x": b.x, "y": b.y} for b in game.bullets.values()],
-                    "items": [{"id": i.id, "x": i.x, "y": i.y, "tipo": i.tipo} for i in game.items.values()], # AÑADIDA la lista de items
-                    "fortress_hp": game.fortress_hp
+                    "items": [{"id": i.id, "x": i.x, "y": i.y, "tipo": i.tipo} for i in game.items.values()],
+                    "fortress_hp": game.fortress_hp,
+                    "fortaleza_escudo_hasta": game.fortaleza_escudo_hasta,
+                    "reloj_activo": game.reloj_hasta > time.time()
                 }}
                 await notificar_a_partida(id_partida, snapshot)
                 
         elapsed = time.time() - t0
         await asyncio.sleep(max(0, intervalo - elapsed))
 
-# --- WebSocket Endpoint (sin cambios significativos) ---
+# --- WebSocket Endpoint ---
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()

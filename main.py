@@ -272,7 +272,7 @@ def pantalla_inicio():
 
 # <-- CAMBIO: Nueva función para mostrar el HUD de los bonus -->
 def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
-    tiempo_actual = pygame.time.get_ticks()
+    tiempo_actual_servidor = time.time()
     y_pos = 120
     
     if tanque.escudo_activo:
@@ -284,12 +284,17 @@ def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
         dibujar_texto(f"Doble Daño: {int(tiempo_restante)}s", fuente, constantes.ROJO, 10, y_pos)
         y_pos += 30
     if tanque.boost_activo:
-        tiempo_restante = (tanque.boost_tiempo_final - tiempo_actual) // 1000
-        dibujar_texto(f"Boost: {tiempo_restante}s", fuente, constantes.AMARILLO, 10, y_pos)
+        tiempo_restante = tanque.boost_hasta - tiempo_actual_servidor
+        dibujar_texto(f"Boost: {int(tiempo_restante)}s", fuente, constantes.AMARILLO, 10, y_pos)
         y_pos += 30
-    if fortaleza_protegida_hasta > tiempo_actual:
-        tiempo_restante = (fortaleza_protegida_hasta - tiempo_actual) // 1000
-        dibujar_texto(f"Escudo Fortaleza: {tiempo_restante}s", fuente, constantes.GRIS, 10, y_pos)
+    
+    # Efectos globales
+    if fortaleza_protegida_hasta > tiempo_actual_servidor:
+        tiempo_restante = fortaleza_protegida_hasta - tiempo_actual_servidor
+        dibujar_texto(f"Escudo Fortaleza: {int(tiempo_restante)}s", fuente, constantes.GRIS, 10, y_pos)
+        y_pos += 30
+    if reloj_activo_remoto:
+        dibujar_texto(f"TIEMPO CONGELADO", fuente, constantes.BLANCO, 10, y_pos)
         y_pos += 30
     
 #Variables
@@ -644,7 +649,8 @@ while run:
                                 tiempo_actual_servidor = time.time()
                                 tanques_aliados[0].escudo_hasta = p_data.get("escudo_hasta", 0)
                                 tanques_aliados[0].potenciado_hasta = p_data.get("potenciado_hasta", 0)
-                                # Actualizamos el estado "activo" en base a los timestamps
+                                tanques_aliados[0].boost_hasta = p_data.get("boost_hasta", 0)
+                                tanques_aliados[0].boost_activo = tanques_aliados[0].boost_hasta > tiempo_actual_servidor
                                 tanques_aliados[0].escudo_activo = tanques_aliados[0].escudo_hasta > tiempo_actual_servidor
                                 tanques_aliados[0].potenciado_activo = tanques_aliados[0].potenciado_hasta > tiempo_actual_servidor
                                 tanques_aliados[0].update()
@@ -661,6 +667,10 @@ while run:
                             ghost.energia = p_data.get("hp", 90)
                             ghost.vidas = p_data.get("vidas", 3)
                             ghost.update()
+                        fortaleza.energia = state.get("fortress_hp", fortaleza.energia)
+                        reloj_activo_remoto = state.get("reloj_activo", False)
+                        fortaleza_protegida_hasta = state.get("fortaleza_escudo_hasta", 0)
+                        
                     balas_actuales = state.get("bullets", [])
                     ids_balas_en_servidor = {b["id"] for b in balas_actuales}
                     
