@@ -110,24 +110,24 @@ async def game_loop():
                 tiempo_actual_ms = time.time() * 1000
                 
                 # --- Lógica de Spawning de Items ---
-                TIEMPO_SPAWN_ITEM = 60000 # segundos
+                TIEMPO_SPAWN_ITEM = 60 # segundos
                 if time.time() - game.ultimo_spawn_item > TIEMPO_SPAWN_ITEM and len(game.items) < 3:
                     game.ultimo_spawn_item = time.time()
-                item_id = str(uuid.uuid4())
+                    item_id = str(uuid.uuid4())
 
-                # Elegir un tipo de item (ej. escudo o daño)
-                tipo_item = random.choice([constantes.ITEM_ESCUDO, constantes.ITEM_DISPARO_POTENCIADO])
+                    # Elegir un tipo de item (ej. escudo o daño)
+                    tipo_item = random.choice([constantes.ITEM_ESCUDO, constantes.ITEM_DISPARO_POTENCIADO])
 
-                # Buscar una posición válida que no esté en un obstáculo
-                while True:
-                    px = random.randint(32, constantes.MAPA_ANCHO - 32)
-                    py = random.randint(32, constantes.MAPA_ALTO - 32)
-                    item_rect_temp = pygame.Rect(0,0,32,32, center=(px,py))
-                    if item_rect_temp.collidelist(game.obstaculos) == -1:
-                        break # Posición válida encontrada
+                    # Buscar una posición válida que no esté en un obstáculo
+                    while True:
+                        px = random.randint(32, constantes.MAPA_ANCHO - 32)
+                        py = random.randint(32, constantes.MAPA_ALTO - 32)
+                        item_rect_temp = pygame.Rect(0,0,32,32, center=(px,py))
+                        if item_rect_temp.collidelist(game.obstaculos) == -1:
+                            break # Posición válida encontrada
 
-                game.items[item_id] = ItemState(item_id, tipo_item, px, py)
-                
+                    game.items[item_id] = ItemState(item_id, tipo_item, px, py)
+                    
                 # SOLUCIÓN 4: Lógica de aparición sin apilamiento
                 if len(game.enemies) < 4 and game.enemy_spawn_list:
                     num_a_spawnear = min(4 - len(game.enemies), len(game.enemy_spawn_list))
@@ -308,7 +308,7 @@ async def game_loop():
                                 player.hp = max(0, player.hp - bullet.dano)
                                 del game.bullets[bullet_id]
                                 hit = True; break
-                            del game.bullets[bullet_id]
+
                     elif bullet.owner_id in game.players:
                         for eid, enemy_rect in all_enemy_rects.items():
                             if bullet_rect.colliderect(enemy_rect):
@@ -329,7 +329,8 @@ async def game_loop():
 
                 # --- Enviar Snapshot ---
                 snapshot = {"type": "snapshot", "state": { 
-                    "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas, "escudo": p.escudo_hasta > time.time()} for p in game.players.values()], # AÑADIDO "escudo"
+                    "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas, 
+                                "escudo_hasta": p.escudo_hasta, "potenciado_hasta": p.potenciado_hasta} for p in game.players.values()], # AÑADIDO "escudo"
                     "enemies": [{"id": e.id, "tipo": e.tipo, "x": e.x, "y": e.y, "rot": e.rot, "hp": e.hp} for e in game.enemies.values()],
                     "bullets": [{"id": b.id, "x": b.x, "y": b.y} for b in game.bullets.values()],
                     "items": [{"id": i.id, "x": i.x, "y": i.y, "tipo": i.tipo} for i in game.items.values()], # AÑADIDA la lista de items

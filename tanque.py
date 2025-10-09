@@ -33,11 +33,11 @@ class Tanque():
         # <-- CAMBIO: Atributos para gestionar efectos de bonus -->
         # Para el jugador
         self.escudo_activo = False
-        self.escudo_tiempo_final = 0
+        self.escudo_hasta = 0
         self.potenciado_activo = False
-        self.potenciado_tiempo_final = 0
+        self.potenciado_hasta = 0
         self.boost_activo = False
-        self.boost_tiempo_final = 0
+        self.boost_hasta = 0
         # Para enemigos (afectados por el reloj)
         self.ralentizado = False
         self.ralentizado_tiempo_final = 0

@@ -11,6 +11,7 @@ import csv
 import random 
 from network import NetworkManager
 import math
+import time
 
 pygame.init()
 
@@ -275,12 +276,12 @@ def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
     y_pos = 120
     
     if tanque.escudo_activo:
-        tiempo_restante = (tanque.escudo_tiempo_final - tiempo_actual) // 1000
-        dibujar_texto(f"Escudo: {tiempo_restante}s", fuente, constantes.AZUL_CIELO_VIVO, 10, y_pos)
+        tiempo_restante = tanque.escudo_hasta - tiempo_actual_servidor
+        dibujar_texto(f"Escudo: {int(tiempo_restante)}s", fuente, constantes.AZUL_CIELO_VIVO, 10, y_pos)
         y_pos += 30
     if tanque.potenciado_activo:
-        tiempo_restante = (tanque.potenciado_tiempo_final - tiempo_actual) // 1000
-        dibujar_texto(f"Doble Daño: {tiempo_restante}s", fuente, constantes.ROJO, 10, y_pos)
+        tiempo_restante = tanque.potenciado_hasta - tiempo_actual_servidor
+        dibujar_texto(f"Doble Daño: {int(tiempo_restante)}s", fuente, constantes.ROJO, 10, y_pos)
         y_pos += 30
     if tanque.boost_activo:
         tiempo_restante = (tanque.boost_tiempo_final - tiempo_actual) // 1000
@@ -639,7 +640,13 @@ while run:
                                 tanques_aliados[0].rotate = p_data.get("rot", 0)
                                 tanques_aliados[0].energia = p_data.get("hp", 90)
                                 tanques_aliados[0].vidas = p_data.get("vidas", 3)
-                                tanques_aliados[0].escudo_activo = p_data.get("escudo", False)
+                                # CÓDIGO CORREGIDO
+                                tiempo_actual_servidor = time.time()
+                                tanques_aliados[0].escudo_hasta = p_data.get("escudo_hasta", 0)
+                                tanques_aliados[0].potenciado_hasta = p_data.get("potenciado_hasta", 0)
+                                # Actualizamos el estado "activo" en base a los timestamps
+                                tanques_aliados[0].escudo_activo = tanques_aliados[0].escudo_hasta > tiempo_actual_servidor
+                                tanques_aliados[0].potenciado_activo = tanques_aliados[0].potenciado_hasta > tiempo_actual_servidor
                                 tanques_aliados[0].update()
                         else:
                             if pid not in remote_players:
@@ -804,9 +811,10 @@ while run:
         
         if jugadores_seleccionados == 1:
             total_enemigos_restantes = len(tanques_enemigos) + len(mundo.tanques_restantes)
-            dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
         else:
             total_enemigos_restantes = len(remote_enemies)
+        
+        dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
         
         aliados_vivos = sum(1 for t in tanques_aliados if t.vivo) + sum(1 for g in remote_players.values() if g.energia > 0)
         dibujar_texto(f"Enemigos Restantes: {total_enemigos_restantes}", fuente, constantes.ROJO, constantes.ANCHO_VENTANA / 2 - 150, 40)
