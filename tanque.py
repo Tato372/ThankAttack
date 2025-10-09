@@ -169,13 +169,13 @@ class Tanque():
     def actualizar_efectos_bonus(self):
         tiempo_actual = pygame.time.get_ticks()
         # Escudo del jugador
-        if self.escudo_activo and tiempo_actual > self.escudo_tiempo_final:
+        if self.escudo_activo and tiempo_actual > self.escudo_hasta:
             self.escudo_activo = False
         # Disparo potenciado del jugador
-        if self.potenciado_activo and tiempo_actual > self.potenciado_tiempo_final:
+        if self.potenciado_activo and tiempo_actual > self.potenciado_hasta:
             self.potenciado_activo = False
         # Boost del jugador
-        if self.boost_activo and tiempo_actual > self.boost_tiempo_final:
+        if self.boost_activo and tiempo_actual > self.boost_hasta:
             self.boost_activo = False
             self.velocidad = self.velocidad_original
             # Restaurar tamaño

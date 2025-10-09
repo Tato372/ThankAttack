@@ -70,11 +70,19 @@ class GameState:
         self.reloj_hasta = 0 
         self.fortaleza_escudo_hasta = 0
         self.fortress_hp = 200
-        self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
+        self.obstaculos = []
+        for o in partida_info["obstaculos"]:
+            rect = pygame.Rect(o[0], o[1], o[2], o[3])
+            vida = o[4] if len(o) > 4 else -1
+            destruible = vida > 0
+            self.obstaculos.append({"rect": rect, "vida": vida, "destruible": destruible})
         self.enemy_spawn_list = partida_info["lista_enemigos"]
         self.enemy_spawn_points = partida_info["spawns_enemigos"]
-        self.fortress_rect = pygame.Rect(25 * constantes.TAMAÑO_REJILLA, 45 * constantes.TAMAÑO_REJILLA, 32*7, 32*7)
-
+        self.fortress_rect = pygame.Rect(0, 0, constantes.TAMAÑO_REJILLA * 7, constantes.TAMAÑO_REJILLA * 7)
+        self.fortress_rect.center = (25 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA * 3.5),
+                             45 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA * 3.5))
+        self.tiempo_ultima_oleada = time.time()
+        self.oleada_activa = False
         if partida_info.get("host"):
             px1, py1 = partida_info["spawn_p1"]
             self.players[partida_info["host"]] = PlayerState(partida_info["host"], px1, py1)
@@ -159,11 +167,16 @@ async def game_loop():
                         game.items[item_id] = ItemState(item_id, tipo_item, px, py)
                         print(f"[BONUS] Apareció un item ESPECIAL: {tipo_item}")
                 
-                # --- Lógica de aparición de enemigos ---
-                if len(game.enemies) < 4 and game.enemy_spawn_list:
-                    num_a_spawnear = min(4 - len(game.enemies), len(game.enemy_spawn_list))
+                # --- Lógica de aparición de enemigos en oleadas ---
+                if not game.enemies and game.enemy_spawn_list and not game.oleada_activa:
+                    game.oleada_activa = True
+                    game.tiempo_ultima_oleada = time.time()
+
+                # Spawnear 4 enemigos cada 10 segundos después de limpiar la oleada anterior
+                if game.oleada_activa and time.time() - game.tiempo_ultima_oleada > 10:
+                    num_a_spawnear = min(4, len(game.enemy_spawn_list))
                     puntos_disponibles = random.sample(game.enemy_spawn_points, min(len(game.enemy_spawn_points), num_a_spawnear))
-                    
+
                     for i in range(num_a_spawnear):
                         tipo_enemigo = game.enemy_spawn_list.pop(0)
                         spawn_point = puntos_disponibles[i]
@@ -171,6 +184,8 @@ async def game_loop():
                         y = spawn_point[1] * constantes.TAMAÑO_REJILLA + 16
                         enemy_id = str(uuid.uuid4())
                         game.enemies[enemy_id] = EnemyState(enemy_id, tipo_enemigo, x, y)
+
+                    game.oleada_activa = False
 
                 all_player_rects = {pid: p.rect for pid, p in game.players.items()}
                 all_enemy_rects = {eid: e.rect for eid, e in game.enemies.items()}
@@ -271,11 +286,16 @@ async def game_loop():
                             
                         player.rect.center = (int(player.x), int(player.y))
                         
+                        # Optimización de colisión de jugador
+                        colision_jugador = False
                         for obs_rect in game.obstaculos + list(all_enemy_rects.values()) + [game.fortress_rect]:
                             if player.rect.colliderect(obs_rect):
-                                player.x, player.y = original_x, original_y
-                                player.rect.center = (int(original_x), int(original_y))
+                                colision_jugador = True
                                 break
+                        
+                        if colision_jugador:
+                            player.x, player.y = original_x, original_y
+                            player.rect.center = (int(original_x), int(original_y))
                     
                     # Limitar al mapa
                     player.rect.left = max(0, player.rect.left)
@@ -286,18 +306,29 @@ async def game_loop():
 
                 # --- Actualizar Balas ---
                 for bullet_id, bullet in list(game.bullets.items()):
-                    # <<<<<<<<<<<<<<< SOLUCIÓN DEFINITIVA A LAS BALAS >>>>>>>>>>>>>>>
-                    hit = False # Reiniciar la variable para CADA bala
+                    # <<<<<<<<<<<<<<< CORRECCIÓN #1: INICIALIZAR 'hit' >>>>>>>>>>>>>>>
+                    hit = False 
 
                     bullet.x += bullet.dx
                     bullet.y += bullet.dy
-                    bullet_rect = pygame.Rect(0,0, 6, 6, center=(int(bullet.x), int(bullet.y)))
+                    bullet_rect = pygame.Rect(0, 0, 6, 6)
+                    bullet_rect.center = (int(bullet.x), int(bullet.y))
                     
                     if not (0 < bullet.x < constantes.MAPA_ANCHO and 0 < bullet.y < constantes.MAPA_ALTO):
                         del game.bullets[bullet_id]; continue
                     
-                    if bullet_rect.collidelist(game.obstaculos) != -1:
-                        del game.bullets[bullet_id]; continue
+                    colisionado = None
+                    for obs in list(game.obstaculos):
+                        if bullet_rect.colliderect(obs["rect"]):
+                            colisionado = obs
+                            break
+                    if colisionado:
+                        del game.bullets[bullet_id]
+                        if colisionado["destruible"]:
+                            colisionado["vida"] -= 1
+                            if colisionado["vida"] <= 0:
+                                game.obstaculos.remove(colisionado)
+                        continue
 
                     fortaleza_escudada = game.fortaleza_escudo_hasta > time.time()
                     if not fortaleza_escudada and bullet_rect.colliderect(game.fortress_rect):
@@ -312,12 +343,14 @@ async def game_loop():
                                 del game.bullets[bullet_id]
                                 hit = True; break
                     elif bullet.owner_id in game.players:
+                        # <<<<<<<<<<<<<<< CORRECCIÓN #2: ITERAR SOBRE LOS OBJETOS ENEMIGO REALES >>>>>>>>>>>>>>>
                         for eid, enemy in list(game.enemies.items()):
-                            if bullet_rect.colliderect(enemy.rect):
+                            if bullet_rect.colliderect(enemy.rect): # Usar enemy.rect
                                 enemy.hp = max(0, enemy.hp - bullet.dano)
                                 if enemy.hp <= 0: del game.enemies[eid]
                                 del game.bullets[bullet_id]
                                 hit = True; break
+                    
                     if hit: continue
                 
                 # --- Lógica de Muerte y Respawn ---
@@ -331,14 +364,17 @@ async def game_loop():
                 # --- Enviar Snapshot ---
                 snapshot = {"type": "snapshot", "state": {
                     "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas,
-                                 "escudo_hasta": p.escudo_hasta, "potenciado_hasta": p.potenciado_hasta,
-                                 "boost_hasta": p.boost_hasta} for p in game.players.values()],
+                                "escudo_hasta": p.escudo_hasta, "potenciado_hasta": p.potenciado_hasta,
+                                "boost_hasta": p.boost_hasta} for p in game.players.values()],
                     "enemies": [{"id": e.id, "tipo": e.tipo, "x": e.x, "y": e.y, "rot": e.rot, "hp": e.hp} for e in game.enemies.values()],
                     "bullets": [{"id": b.id, "x": b.x, "y": b.y} for b in game.bullets.values()],
                     "items": [{"id": i.id, "x": i.x, "y": i.y, "tipo": i.tipo} for i in game.items.values()],
                     "fortress_hp": game.fortress_hp,
                     "fortaleza_escudo_hasta": game.fortaleza_escudo_hasta,
-                    "reloj_activo": game.reloj_hasta > time.time()
+                    "reloj_activo": game.reloj_hasta > time.time(),
+                    "obstaculos": [
+                                    {"x": o["rect"].x, "y": o["rect"].y, "w": o["rect"].width, "h": o["rect"].height, "vida": o["vida"]}
+                                    for o in game.obstaculos]
                 }}
                 await notificar_a_partida(id_partida, snapshot)
                 
@@ -417,3 +453,4 @@ async def startup_event():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
