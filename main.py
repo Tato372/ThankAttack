@@ -689,7 +689,7 @@ while run:
             pantalla.blit(item.image, (item.rect.x - posicion_pantalla[0], item.rect.y - posicion_pantalla[1]))
     
         todos_los_jugadores_visibles = list(tanques_aliados) + list(remote_players.values())
-        for arbusto_img, arbusto_rect in mundo.arbustos:
+        for arbusto_img, arbusto_rect, _, _ in mundo.arbustos:
             dentro = any(arbusto_rect.colliderect(j.forma) for j in todos_los_jugadores_visibles)
             temp_img = arbusto_img.copy()
             if dentro:

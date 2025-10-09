@@ -289,7 +289,7 @@ async def game_loop():
                         # Optimización de colisión de jugador
                         colision_jugador = False
                         for obs_rect in game.obstaculos + list(all_enemy_rects.values()) + [game.fortress_rect]:
-                            if player.rect.colliderect(obs_rect):
+                            if player.rect.colliderect(obs["rect"]):
                                 colision_jugador = True
                                 break
                         
