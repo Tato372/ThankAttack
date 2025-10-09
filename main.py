@@ -139,24 +139,34 @@ def resetear_mundo():
     # Simplemente llamamos a iniciar_partida con la misma configuración
     return iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
 
+# main.py
+
 def iniciar_partida(dificultad, num_jugadores):
     """Crea y devuelve todos los objetos necesarios para una nueva partida."""
-    # Crear listas y grupos de sprites vacíos
-    tanques = []
-    tanques_enemigos = []
-    grupo_balas = pygame.sprite.Group()
-    grupo_balas_enemigas = pygame.sprite.Group()
-    grupo_textos_daño = pygame.sprite.Group()
-    grupo_items = pygame.sprite.Group()
+    # Limpiar listas y grupos de sprites
+    tanques.clear()
+    tanques_enemigos.clear()
+    remote_enemies.clear()
+    remote_players.clear()
+    grupo_balas.empty()
+    grupo_balas_enemigas.empty()
+    grupo_textos_daño.empty()
+    grupo_items.empty()
 
-    # Crear el mundo usando la dificultad y jugadores seleccionados
     mundo = Mundo()
-    mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad, num_jugadores)
-
-    # Crear tanque del jugador
-    # MODIFICADO: Crear tanques para 1 o 2 jugadores
+    
+    # --- CORRECCIÓN CLAVE ---
+    # Solo procesamos el mundo y creamos enemigos localmente si es 1 JUGADOR
+    if num_jugadores == 1:
+        mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad, num_jugadores)
+        # Añadimos los enemigos locales a la lista de tanques para colisiones
+        for enemigo in mundo.lista_enemigos:
+            tanques.append(enemigo)
+            tanques_enemigos.append(enemigo)
+    
+    # El cliente SIEMPRE crea su propio tanque
     tanques_aliados = []
-    px1, py1 = mundo.posicion_spawn_jugador
+    px1, py1 = mundo.posicion_spawn_jugador if num_jugadores == 1 else (5, 5) # Coords temporales para MP
     tanque_jugador1 = Tanque(
         px1 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
         py1 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
@@ -165,61 +175,20 @@ def iniciar_partida(dificultad, num_jugadores):
     tanque_jugador1.id_red = mi_id_de_red
     tanques.append(tanque_jugador1)
     tanques_aliados.append(tanque_jugador1)
-
-    """tanque_jugador2 = None
-    if num_jugadores == 2:
-        # Asegúrate de que el mapa CSV tenga un tile '8' para el spawn del jugador 2
-        if mundo.posicion_spawn_jugador2:
-            px2, py2 = mundo.posicion_spawn_jugador2
-            tanque_jugador2 = Tanque(
-                px2 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                py2 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                animaciones, 90, 0, constantes.VELOCIDAD, constantes.DISPARO_COOLDOWN
-            )
-            tanques.append(tanque_jugador2)
-            tanques_aliados.append(tanque_jugador2)
-        else:
-            print("ADVERTENCIA: No se encontró punto de spawn para el jugador 2 (tile 10).")"""
-
     
-    #Crear el arma del tanque del jugador
     cañon_jugador = Weapon(imagen_cañon, imagen_balas)
 
-    # Crear la fortaleza
-    fx, fy = mundo.posicion_fortaleza
+    # La fortaleza se crea siempre, pero sus datos vendrán del servidor en MP
+    fx, fy = mundo.posicion_fortaleza if num_jugadores == 1 else (25, 45) # Coords temporales
     fortaleza = Fortaleza(
         fx * constantes.TAMAÑO_REJILLA,
         fy * constantes.TAMAÑO_REJILLA,
         imagen_fortaleza
     )
-    fortaleza_obstaculo = [
-        fortaleza.image,
-        fortaleza.rect,
-        fortaleza.rect.centerx,
-        fortaleza.rect.centery,
-        fortaleza.energia # La "vida" del obstáculo es la energía de la fortaleza
-    ]
-    mundo.obstaculos_tiles.append(fortaleza_obstaculo)
-    # Se ajusta para que coincida con la nueva estructura de obstaculos
-    muros_originales = {}
-    for i, obs in enumerate(mundo.obstaculos_tiles):
-        if len(obs) > 5 and obs[5]: # Si es un muro de fortaleza
-             muros_originales[i] = obs[0].copy() # Guardamos la imagen original del ladrillo
+    
+    muros_originales = {} # Esta lógica puede necesitar revisión para MP, pero por ahora está bien
 
-    mundo.crear_grid_navegacion()
-    """for enemigo in mundo.lista_enemigos:
-        enemigo.animacion_muerte = animacion_muerte
-        enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
-        tanques_enemigos.append(enemigo)
-        tanques.append(enemigo)"""
-    
-    # Crear items
-    for item in mundo.lista_items:
-        grupo_items.add(item)
-    
-    # Devolver todos los objetos creados
     return mundo, tanques_aliados, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales
-
 # NUEVO: Pantalla para elegir entre crear o unirse
 def pantalla_lobby():
     pantalla.fill(constantes.COLOR_FONDO)
