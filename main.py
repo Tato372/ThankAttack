@@ -271,7 +271,7 @@ def pantalla_inicio():
     pygame.display.update()
 
 # <-- CAMBIO: Nueva función para mostrar el HUD de los bonus -->
-def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
+def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta, reloj_activo):
     tiempo_actual_servidor = time.time()
     y_pos = 120
     
@@ -293,7 +293,7 @@ def dibujar_hud_bonus(tanque, fortaleza_protegida_hasta):
         tiempo_restante = fortaleza_protegida_hasta - tiempo_actual_servidor
         dibujar_texto(f"Escudo Fortaleza: {int(tiempo_restante)}s", fuente, constantes.GRIS, 10, y_pos)
         y_pos += 30
-    if reloj_activo_remoto:
+    if reloj_activo:
         dibujar_texto(f"TIEMPO CONGELADO", fuente, constantes.BLANCO, 10, y_pos)
         y_pos += 30
     
@@ -806,7 +806,7 @@ while run:
         if tanques_aliados:
             vida_jugador(tanques_aliados[0])
             dibujar_texto(f"Puntaje: {tanques_aliados[0].puntaje}", fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190, 50)
-            dibujar_hud_bonus(tanques_aliados[0], fortaleza_protegida_hasta)
+            dibujar_hud_bonus(tanques_aliados[0], fortaleza_protegida_hasta, reloj_activo_remoto)
             vidas_p1 = tanques_aliados[0].vidas 
             dibujar_texto(f"Vidas P1: {vidas_p1}", fuente, constantes.BLANCO, 10, 50)
         
