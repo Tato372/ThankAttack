@@ -43,16 +43,16 @@ class Mundo():
             for x, tile in enumerate(row):
                 if tile == -1: continue
                 
-                if tile == constantes.jugador_spawn_tile:
+                if tile == jugador_spawn_tile:
                     self.posicion_spawn_jugador = (x, y)
                     continue
-                elif tile == constantes.jugador2_spawn_tile:
+                elif tile == jugador2_spawn_tile:
                     self.posicion_spawn_jugador2 = (x, y)
                     continue
-                elif tile == constantes.enemigo_spawn_tile:
+                elif tile == enemigo_spawn_tile:
                     self.posiciones_spawn_enemigos.append((x, y))
                     continue
-                elif tile == constantes.fortaleza_tile:
+                elif tile == fortaleza_tile:
                     self.posicion_fortaleza = (x, y)
                     continue
                 
@@ -60,13 +60,13 @@ class Mundo():
                 rect = image.get_rect(center=(x * constantes.TAMAÑO_REJILLA + 16, y * constantes.TAMAÑO_REJILLA + 16))
                 tile_data = [image, rect, rect.centerx, rect.centery]
 
-                if tile in constantes.destruibles:
+                if tile in destruibles:
                     tile_data.append(4) # Vida del obstáculo
                     self.obstaculos_tiles.append(tile_data)
-                elif tile in constantes.no_destruibles:
+                elif tile in no_destruibles:
                     tile_data.append(-1)
                     self.obstaculos_tiles.append(tile_data)
-                elif tile in constantes.arbustos:
+                elif tile in arbustos:
                     self.arbustos.append(tile_data)
     
     def generar_enemigos(self, dificultad, num_jugadores, animaciones_enemigos):
