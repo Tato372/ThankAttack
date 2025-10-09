@@ -139,8 +139,6 @@ def resetear_mundo():
     # Simplemente llamamos a iniciar_partida con la misma configuración
     return iniciar_partida(dificultad_seleccionada, jugadores_seleccionados)
 
-# main.py
-
 def iniciar_partida(dificultad, num_jugadores):
     """Crea y devuelve todos los objetos necesarios para una nueva partida."""
     # Limpiar listas y grupos de sprites
@@ -189,6 +187,7 @@ def iniciar_partida(dificultad, num_jugadores):
     muros_originales = {} # Esta lógica puede necesitar revisión para MP, pero por ahora está bien
 
     return mundo, tanques_aliados, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales
+
 # NUEVO: Pantalla para elegir entre crear o unirse
 def pantalla_lobby():
     pantalla.fill(constantes.COLOR_FONDO)
