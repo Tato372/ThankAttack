@@ -142,14 +142,13 @@ def resetear_mundo():
 def iniciar_partida(dificultad, num_jugadores):
     """Crea y devuelve todos los objetos necesarios para una nueva partida."""
     # Limpiar listas y grupos de sprites
-    tanques.clear()
-    tanques_enemigos.clear()
-    remote_enemies.clear()
-    remote_players.clear()
-    grupo_balas.empty()
-    grupo_balas_enemigas.empty()
-    grupo_textos_daño.empty()
-    grupo_items.empty()
+    tanques = []
+    tanques_enemigos = []
+    tanques_aliados = []
+    grupo_balas = pygame.sprite.Group()
+    grupo_balas_enemigas = pygame.sprite.Group()
+    grupo_textos_daño = pygame.sprite.Group()
+    grupo_items = pygame.sprite.Group()
 
     mundo = Mundo()
     
