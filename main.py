@@ -30,7 +30,7 @@ info_partida = {
 jugador1_listo = False
 jugador2_listo = False
 
-net = NetworkManager("ws://192.168.0.112:8000/ws")
+net = NetworkManager("ws://172.24.82.196:8000/ws")
 
 remote_players = {}
 
