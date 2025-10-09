@@ -560,13 +560,17 @@ while run:
         # Usamos la misma función de antes, pero con datos del servidor
         pantalla_espera_host() # Asegúrate que esta función ahora use 'mi_partida_actual'
     elif game_state == "EN_JUEGO":
-         # --- LÓGICA DE ACTUALIZACIÓN ---
+        # ==================================================================
+        # LÓGICA DE ACTUALIZACIÓN DEL JUEGO
+        # ==================================================================
+        tiempo_actual = pygame.time.get_ticks()
 
-        # PASO 1: SEPARAMOS LA LÓGICA DE MOVIMIENTO PARA 1 JUGADOR Y MULTIJUGADOR
         if jugadores_seleccionados == 1:
-            # ============================================
-            # LÓGICA PARA 1 JUGADOR (TODO ES LOCAL)
-            # ============================================
+            # --------------------------------------------
+            # MODO 1 JUGADOR: TODO SE EJECUTA LOCALMENTE
+            # --------------------------------------------
+            
+            # 1. Mover al jugador localmente
             keys = pygame.key.get_pressed()
             delta_x, delta_y = 0, 0
             if keys[pygame.K_w]: delta_y = -constantes.VELOCIDAD
@@ -575,49 +579,93 @@ while run:
             elif keys[pygame.K_d]: delta_x = constantes.VELOCIDAD
             
             if tanques_aliados:
-                # El jugador se mueve y colisiona con todo localmente
                 tanques_aliados[0].movimiento(delta_x, delta_y, mundo.obstaculos_tiles, tanques)
                 tanques_aliados[0].update()
 
+            # 2. Actualizar IA de enemigos locales
+            for enemigo in list(tanques_enemigos):
+                if not enemigo.update():
+                    tanques_enemigos.remove(enemigo)
+                    tanques.remove(enemigo)
+                    if tanques_aliados: tanques_aliados[0].puntaje += 100
+                else:
+                    if tanques_aliados:
+                        enemigo.actualizar_ia_pixel(tanques_aliados[0], fortaleza, mundo.obstaculos_tiles, tanques, mundo.arbustos, grupo_balas_enemigas)
+
+            # 3. Actualizar balas, items y bonus (toda la lógica local)
+            if tanques_aliados and tanques_aliados[0].vivo:
+                bala = cañon_jugador.update(tanques_aliados[0], 1, False)
+                if bala:
+                    grupo_balas.add(bala)
+            
+            for bala in list(grupo_balas):
+                enemigo_golpeado = bala.update(tanques_enemigos, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
+                if enemigo_golpeado:
+                    enemigo_golpeado.energia -= bala.daño
+                    posicion_daño = enemigo_golpeado.forma.center
+                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(bala.daño), fuente, constantes.ROJO)
+                    grupo_textos_daño.add(texto_daño)
+
+            for bala_enemiga in list(grupo_balas_enemigas):
+                jugador_golpeado = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
+                if jugador_golpeado:
+                    jugador_golpeado.energia -= bala_enemiga.daño
+                if fortaleza.rect.colliderect(bala_enemiga.rect):
+                    fortaleza.energia -= bala_enemiga.daño
+                    bala_enemiga.kill()
+
+            # 4. Lógica de oleadas locales
+            if not tanques_enemigos and mundo.tanques_restantes:
+                oleada_actual += 1
+                nuevos_enemigos = mundo.spawn_enemigos(animaciones_enemigos, cantidad=4)
+                for enemigo in nuevos_enemigos:
+                    enemigo.animacion_muerte = animacion_muerte
+                    enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
+                    tanques_enemigos.append(enemigo)
+                    tanques.append(enemigo)
+
         elif jugadores_seleccionados > 1:
-            # ============================================
-            # LÓGICA PARA MULTIJUGADOR (EL SERVIDOR MANDA)
-            # ============================================
-            # Procesar los snapshots del servidor es lo PRIMERO, para tener la posición más actualizada
+            # -------------------------------------------------
+            # MODO MULTIJUGADOR: EL SERVIDOR ES LA AUTORIDAD
+            # -------------------------------------------------
+            
+            # 1. Procesar snapshots del servidor para actualizar TODO
             for msg in net.poll():
                 if msg["type"] == "snapshot":
                     state = msg["state"]
-                    for p_data in state["players"]:
+                    # Actualizar jugadores
+                    for p_data in state.get("players", []):
                         pid = p_data["id"]
                         if pid == net.player_id:
-                            tanques_aliados[0].forma.centerx = p_data["x"]
-                            tanques_aliados[0].forma.centery = p_data["y"]
-                            tanques_aliados[0].rotate = p_data.get("rot", 0)
-                            tanques_aliados[0].update()
-                            tanques_aliados[0].energia = p_data.get("hp", 90)
-                            tanques_aliados[0].vidas = p_data.get("vidas", 3)
+                            if tanques_aliados:
+                                tanques_aliados[0].target_pos = (p_data["x"], p_data["y"])
+                                tanques_aliados[0].last_pos = tanques_aliados[0].forma.center
+                                tanques_aliados[0].last_update_time = pygame.time.get_ticks()
+                                tanques_aliados[0].rotate = p_data.get("rot", 0)
+                                tanques_aliados[0].energia = p_data.get("hp", 90)
+                                tanques_aliados[0].vidas = p_data.get("vidas", 3)
+                                tanques_aliados[0].update()
                         else:
                             if pid not in remote_players:
                                 ghost = Tanque(p_data["x"], p_data["y"], animaciones, 90, 0, 0, 0)
                                 remote_players[pid] = ghost
                             else:
                                 ghost = remote_players[pid]
-                                ghost.last_pos = ghost.forma.center
-                                ghost.target_pos = (p_data["x"], p_data["y"])
-                                ghost.last_update_time = pygame.time.get_ticks()
-                                ghost.rotate = p_data.get("rot", 0)
-                                tanques_aliados[0].energia = p_data.get("hp", 90)
-                                ghost.vidas = p_data.get("vidas", 3)
-                    
-                    # NUEVO: Actualizar enemigos desde el servidor
+                            ghost.target_pos = (p_data["x"], p_data["y"])
+                            ghost.last_pos = ghost.forma.center
+                            ghost.last_update_time = pygame.time.get_ticks()
+                            ghost.rotate = p_data.get("rot", 0)
+                            ghost.energia = p_data.get("hp", 90)
+                            ghost.vidas = p_data.get("vidas", 3)
+                            ghost.update()
+                            
+                    # Actualizar enemigos
                     enemigos_actuales = state.get("enemies", [])
                     ids_enemigos_en_servidor = {e["id"] for e in enemigos_actuales}
 
-                    # Crear/actualizar enemigos que llegan del servidor
                     for enemy_data in enemigos_actuales:
                         eid = enemy_data["id"]
                         if eid not in remote_enemies:
-                            # Creamos un "fantasma" de enemigo
                             tipo = enemy_data["tipo"]
                             ghost_enemy = Tanque(enemy_data["x"], enemy_data["y"], animaciones_enemigos[tipo-1], 100, tipo, 0, 0)
                             remote_enemies[eid] = ghost_enemy
@@ -629,32 +677,41 @@ while run:
                         ghost_enemy.last_update_time = pygame.time.get_ticks()
                         ghost_enemy.rotate = enemy_data.get("rot", 0)
                         ghost_enemy.energia = enemy_data.get("hp", 100)
-                        ghost_enemy.update() # Para que se anime el sprite
+                        ghost_enemy.update()
 
-                    # Limpiar enemigos que ya no existen en el servidor
                     for eid in list(remote_enemies.keys()):
                         if eid not in ids_enemigos_en_servidor:
                             del remote_enemies[eid]
-                                
+                            
                     fortaleza.energia = state.get("fortress_hp", fortaleza.energia)
-
+            
+            # 2. Enviar nuestros inputs al servidor
             input_seq += 1
             net.send_input(input_seq, pressed)
-
-            # ESTA ES LA LÍNEA QUE TE PEDÍ AÑADIR (2.B)
-            # Corrección de colisión local contra enemigos y aliados
-            if tanques_aliados:
-                # Pasamos una lista de obstáculos vacía ([]) para que solo revise colisiones con otros tanques.
-                tanques_para_colision = tanques_enemigos + list(remote_players.values())
-                tanques_aliados[0].movimiento(0, 0, [], tanques_para_colision)
+            
+            # 3. Actualizar balas (solo las nuestras)
+            if tanques_aliados and tanques_aliados[0].vivo:
+                bala = cañon_jugador.update(tanques_aliados[0], 1, False)
+                if bala:
+                    grupo_balas.add(bala)
+            
+            for bala in list(grupo_balas):
+                enemigo_golpeado = bala.update(list(remote_enemies.values()), mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
+                if enemigo_golpeado:
+                    # Futuro: Reportar daño de bala de jugador a enemigo
+                    pass
 
         # ==============================================================
-        # EL RESTO DE LA LÓGICA ES COMÚN PARA AMBOS MODOS DE JUEGO
+        # LÓGICA COMÚN PARA AMBOS MODOS (DIBUJADO Y FIN DE PARTIDA)
         # ==============================================================
-        for ghost in remote_players.values(): ghost.interpolate_position()
-        for ghost_enemy in remote_enemies.values(): ghost_enemy.interpolate_position()
         
-        # El cálculo de la cámara va aquí, DESPUÉS de que el jugador tiene su posición final
+        # Interpolar posiciones para movimiento fluido en multijugador
+        if jugadores_seleccionados > 1:
+            if tanques_aliados: tanques_aliados[0].interpolate_position()
+            for ghost in remote_players.values(): ghost.interpolate_position()
+            for ghost_enemy in remote_enemies.values(): ghost_enemy.interpolate_position()
+
+        # Calcular posición de la cámara
         posicion_pantalla = [0, 0]
         if tanques_aliados:
             cam_x = tanques_aliados[0].forma.centerx - constantes.ANCHO_VENTANA / 2
@@ -663,276 +720,88 @@ while run:
             cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
             posicion_pantalla = [cam_x, cam_y]
 
-        # Interpolar la posición de los jugadores remotos para suavizar el movimiento
-        for ghost in remote_players.values():
-            ghost.interpolate_position()
-
-        # Actualizar tanques enemigos, balas, items y otros
-        if any(j.vivo for j in tanques_aliados):
-            # Lógica de red (enviar inputs, recibir snapshots)
-            # (Se envía solo el input del jugador 1 por ahora)
-            input_seq += 1
-            net.send_input(input_seq, pressed)
-            
-            # Procesar mensajes del servidor
-            for msg in net.poll():
-                if tipo_mensaje == "assign_id":
-                    net.player_id = msg.get("player_id")
-                    mi_id_de_red = net.player_id
-                if msg["type"] == "snapshot":
-                    state = msg["state"]
-                    for p_data in state["players"]:
-                        pid = p_data["id"]
-                        if pid == net.player_id:
-                            # Sincronizar nuestro jugador con el servidor
-                            tanques_aliados[0].forma.centerx = p_data["x"]
-                            tanques_aliados[0].forma.centery = p_data["y"]
-                            tanques_aliados[0].energia = p_data.get("hp", 90)
-                            tanques_aliados[0].vidas = p_data.get("vidas", 3)
-                        else:
-                            # Crear o actualizar "fantasmas" de otros jugadores
-                            if pid not in remote_players:
-                                ghost = Tanque(p_data["x"], p_data["y"], animaciones, p_data.get("hp", 90), 0, 0, 0)
-                                remote_players[pid] = ghost
-                            else:
-                                ghost = remote_players[pid]
-                                ghost.forma.centerx = p_data["x"]
-                                ghost.forma.centery = p_data["y"]
-                                ghost.energia = p_data.get("hp", 90)
-                                ghost.vidas = p_data.get("vidas", 3)
-                    fortaleza.energia = state.get("fortress_hp", fortaleza.energia)
-                    
-                    # Eliminar fantasmas de jugadores desconectados
-                    remote_ids = {p["id"] for p in state["players"]}
-                    for pid in list(remote_players.keys()):
-                        if pid not in remote_ids:
-                            del remote_players[pid]
-
-            # Actualizar IA de enemigos
-            for enemigo in list(tanques_enemigos):
-                if not enemigo.update():
-                    tanques_enemigos.remove(enemigo)
-                    tanques.remove(enemigo)
-                    tanques_aliados[0].puntaje += 100 # El puntaje va al jugador 1
-                else:
-                    # La IA apunta al jugador más cercano
-                    jugador_cercano = min(tanques_aliados, key=lambda j: math.hypot(j.forma.centerx - enemigo.forma.centerx, j.forma.centery - enemigo.forma.centery))
-                    enemigo.actualizar_ia_pixel(jugador_cercano, fortaleza, mundo.obstaculos_tiles, tanques, mundo.arbustos, grupo_balas_enemigas)
-
-            # Lógica de generación de bonus por tiempo...
-            # (El resto de la lógica de actualización: balas, items, oleadas, etc.)
-            # ==================================================================
-            # INICIO DEL BLOQUE FALTANTE: LÓGICA DE ACTUALIZACIÓN DEL JUEGO
-            # ==================================================================
-            
-            # Actualizar IA de enemigos
-            for enemigo in list(tanques_enemigos):
-                if not enemigo.update():  
-                    tanques_enemigos.remove(enemigo)
-                    tanques.remove(enemigo)
-                    if tanques_aliados: tanques_aliados[0].puntaje += 100 # El puntaje va al jugador 1
-                else:
-                    # La IA apunta al jugador aliado más cercano que esté vivo
-                    jugadores_vivos = [j for j in tanques_aliados if j.vivo]
-                    if jugadores_vivos:
-                        jugador_cercano = min(jugadores_vivos, key=lambda j: math.hypot(j.forma.centerx - enemigo.forma.centerx, j.forma.centery - enemigo.forma.centery))
-                        enemigo.actualizar_ia_pixel(jugador_cercano, fortaleza, mundo.obstaculos_tiles, tanques, mundo.arbustos, grupo_balas_enemigas)
-
-            # Lógica de generación de bonus por tiempo
-            tiempo_actual = pygame.time.get_ticks()
-            # Bonus convencionales (cada 60 segundos)
-            if tiempo_actual - ultimo_spawn_convencional > 60000:
-                ultimo_spawn_convencional = tiempo_actual
-                if mundo.tiles_libres:
-                    tipo_item = random.choice([constantes.ITEM_ESCUDO, constantes.ITEM_DISPARO_POTENCIADO, constantes.ITEM_RELOJ])
-                    x_tile, y_tile = random.choice(mundo.tiles_libres)
-                    item = Item(x_tile * constantes.TAMAÑO_REJILLA + 16, y_tile * constantes.TAMAÑO_REJILLA + 16, tipo_item, imagenes_items[tipo_item])
-                    grupo_items.add(item)
-            
-            # Bonus especiales (cada 2 minutos, 50% probabilidad)
-            if tiempo_actual - ultimo_spawn_especial > 120000:
-                ultimo_spawn_especial = tiempo_actual
-                if random.random() < 0.5 and mundo.tiles_libres:
-                    tipo_item = random.choice([constantes.ITEM_BOMBA, constantes.ITEM_ESCUDO_FORTALEZA, constantes.ITEM_VIDA, constantes.ITEM_BOOST])
-                    x_tile, y_tile = random.choice(mundo.tiles_libres)
-                    item = Item(x_tile * constantes.TAMAÑO_REJILLA + 16, y_tile * constantes.TAMAÑO_REJILLA + 16, tipo_item, imagenes_items[tipo_item])
-                    grupo_items.add(item)
-                    
-            # Actualizar arma del jugador y balas
-            # NOTA: Por ahora, solo el Jugador 1 (con la barra espaciadora) puede disparar.
-            if tanques_aliados and tanques_aliados[0].vivo:
-                bala = cañon_jugador.update(tanques_aliados[0], 1, False)
-                if bala:
-                    grupo_balas.add(bala)
-            
-            # Actualizar balas de los jugadores (golpean enemigos)
-            for bala in list(grupo_balas):
-                enemigo_golpeado = bala.update(tanques_enemigos, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if enemigo_golpeado:
-                    # El daño a enemigos sigue siendo local por ahora
-                    enemigo_golpeado.energia -= bala.daño
-                    posicion_daño = enemigo_golpeado.forma.center
-                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(bala.daño), fuente, constantes.ROJO)
-                    grupo_textos_daño.add(texto_daño)
-
-            # Actualizar balas enemigas (golpean jugadores y fortaleza)
-            for bala_enemiga in list(grupo_balas_enemigas):
-                # Revisamos si la bala golpeó a un jugador
-                jugador_golpeado = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if jugador_golpeado and jugador_golpeado.id_red:
-                    net.reportar_daño(jugador_golpeado.id_red, bala_enemiga.daño)
-                    continue # La bala ya se destruyó, pasamos a la siguiente
-
-                # Si no golpeó a un jugador, revisamos si golpeó la fortaleza
-                if fortaleza.rect.colliderect(bala_enemiga.rect):
-                    net.reportar_daño(None, bala_enemiga.daño, es_fortaleza=True)
-                    bala_enemiga.kill()
-
-            # Lógica de recolección de items (para todos los jugadores)
-            for item in list(grupo_items): # Usamos list() para poder modificar el grupo mientras se itera
-                for jugador in tanques_aliados:
-                    if jugador.vivo and item.rect.colliderect(jugador.forma):
-                        tipo = item.tipo_item
-                        
-                        if tipo == constantes.ITEM_MONEDA: jugador.puntaje += 20
-                        elif tipo == constantes.ITEM_VIDA: jugador.energia = 90 # Vida al máximo
-                        elif tipo == constantes.ITEM_ESCUDO:
-                            jugador.escudo_activo = True
-                            jugador.escudo_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
-                        elif tipo == constantes.ITEM_DISPARO_POTENCIADO:
-                            jugador.potenciado_activo = True
-                            jugador.potenciado_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
-                        elif tipo == constantes.ITEM_BOOST:
-                            # (La lógica de boost está en la clase Tanque, aquí solo se activa)
-                            jugador.boost_activo = True
-                            jugador.boost_tiempo_final = tiempo_actual + constantes.DURACION_BONUS
-                        elif tipo == constantes.ITEM_BOMBA:
-                            for enemigo in list(tanques_enemigos): enemigo.energia = 0
-                        elif tipo == constantes.ITEM_RELOJ:
-                            for enemigo in tanques_enemigos:
-                                enemigo.ralentizado = True
-                                enemigo.ralentizado_tiempo_final = tiempo_actual + constantes.DURACION_RELOJ
-                        elif tipo == constantes.ITEM_ESCUDO_FORTALEZA:
-                            fortaleza_protegida_hasta = tiempo_actual + constantes.DURACION_ESCUDO_FORTALEZA
-                            for obs in mundo.obstaculos_tiles:
-                                if len(obs) > 5 and obs[5]: obs[0] = lista_tiles[5]
-                        
-                        item.kill() # El item desaparece
-                        break # Salimos del bucle de jugadores para que no lo tomen dos a la vez
-
-            # Restaurar muros de fortaleza cuando el escudo expira
-            if fortaleza_protegida_hasta > 0 and tiempo_actual > fortaleza_protegida_hasta:
-                fortaleza_protegida_hasta = 0
-                for i, obs in enumerate(mundo.obstaculos_tiles):
-                    if len(obs) > 5 and obs[5]:
-                         if i in muros_originales:
-                            obs[0] = muros_originales[i]
-
-            # Actualizar sprites de items y textos de daño
-            grupo_items.update()
-            grupo_textos_daño.update()
-            
-            # Lógica de oleadas
-            if not tanques_enemigos and mundo.tanques_restantes:
-                oleada_actual += 1
-                nuevos_enemigos = mundo.spawn_enemigos(animaciones_enemigos, cantidad=4)
-                for enemigo in nuevos_enemigos:
-                    enemigo.animacion_muerte = animacion_muerte
-                    enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
-                    tanques_enemigos.append(enemigo)
-                    tanques.append(enemigo)
-
-            # ==================================================================
-            # FIN DEL BLOQUE FALTANTE
-            # ==================================================================
-            # --- DIBUJAR TODO EN PANTALLA ---
-            pantalla.fill(constantes.COLOR_BG)
-            
-            # Cámara sigue al jugador 1
-            cam_x = tanques_aliados[0].forma.centerx - constantes.ANCHO_VENTANA / 2
-            cam_y = tanques_aliados[0].forma.centery - constantes.ALTO_VENTANA / 2
-            cam_x = max(0, min(cam_x, constantes.MAPA_ANCHO - constantes.ANCHO_VENTANA))
-            cam_y = max(0, min(cam_y, constantes.MAPA_ALTO - constantes.ALTO_VENTANA))
-            posicion_pantalla = [cam_x, cam_y]
-
-            mundo.dibujar(pantalla, posicion_pantalla)
-            fortaleza.dibujar(pantalla, posicion_pantalla)
-
-            for item in grupo_items:
-                pantalla.blit(item.image, (item.rect.x - posicion_pantalla[0], item.rect.y - posicion_pantalla[1]))
-            
+        # --- DIBUJAR TODO EN PANTALLA ---
+        pantalla.fill(constantes.COLOR_BG)
+        mundo.dibujar(pantalla, posicion_pantalla)
+        fortaleza.dibujar(pantalla, posicion_pantalla)
+        
+        # Dibujar los enemigos correctos según el modo
+        if jugadores_seleccionados == 1:
             for enemigo in tanques_enemigos:
                 enemigo.dibujar(pantalla, posicion_pantalla)
-            
-            for jugador in tanques_aliados:
-                jugador.dibujar(pantalla, posicion_pantalla)
-
-            for ghost in remote_players.values():
-                ghost.dibujar(pantalla, posicion_pantalla)
-            
+        else: # Multijugador
             for ghost_enemy in remote_enemies.values():
                 ghost_enemy.dibujar(pantalla, posicion_pantalla)
-            
-            for bala in grupo_balas: bala.dibujar(pantalla, posicion_pantalla)
-            for bala_enemiga in grupo_balas_enemigas: bala_enemiga.dibujar(pantalla, posicion_pantalla)
-            for texto in grupo_textos_daño:
-                pantalla.blit(texto.image, (texto.rect.x - posicion_pantalla[0], texto.rect.y - posicion_pantalla[1]))
-            
-            todos_los_aliados = tanques_aliados + list(remote_players.values())
-            for arbusto in mundo.arbustos:
-                # Dibujar primero el arbusto opaco
-                pantalla.blit(arbusto[0], (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
-                
-                # Revisar si algún aliado está debajo para aplicar transparencia
-                for jugador in todos_los_aliados:
-                    if arbusto[1].colliderect(jugador.forma):
-                        # Creamos una copia temporal para no afectar la imagen original
-                        temp_img = arbusto[0].copy()
-                        temp_img.set_alpha(150) # Hacemos la copia transparente
-                        pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
-                        # Rompemos el bucle para no dibujar la transparencia varias veces si ambos están debajo
-                        break 
-            # HUD
-            # (El HUD muestra info del jugador 1 por ahora)
-            if tanques_aliados:
-                vida_jugador(tanques_aliados[0])
-            dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
+
+        # Dibujar jugadores (local y remotos)
+        for jugador in tanques_aliados:
+            jugador.dibujar(pantalla, posicion_pantalla)
+        for ghost in remote_players.values():
+            ghost.dibujar(pantalla, posicion_pantalla)
+
+        # Dibujar balas, items y textos de daño
+        for bala in grupo_balas: bala.dibujar(pantalla, posicion_pantalla)
+        for bala_enemiga in grupo_balas_enemigas: bala_enemiga.dibujar(pantalla, posicion_pantalla)
+        for texto in grupo_textos_daño:
+            pantalla.blit(texto.image, (texto.rect.x - posicion_pantalla[0], texto.rect.y - posicion_pantalla[1]))
+        
+        # Dibujar arbustos y HUD
+        todos_los_jugadores_visibles = list(tanques_aliados) + list(remote_players.values())
+        for arbusto in mundo.arbustos:
+            pantalla.blit(arbusto[0], (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
+            for jugador in todos_los_jugadores_visibles:
+                if arbusto[1].colliderect(jugador.forma):
+                    temp_img = arbusto[0].copy()
+                    temp_img.set_alpha(150)
+                    pantalla.blit(temp_img, (arbusto[1].x - cam_x, arbusto[1].y - cam_y))
+                    break 
+        
+        if tanques_aliados:
+            vida_jugador(tanques_aliados[0])
             dibujar_texto(f"Puntaje: {tanques_aliados[0].puntaje}", fuente, constantes.AZUL_CIELO_VIVO, constantes.ANCHO_VENTANA - 190, 50)
             dibujar_hud_bonus(tanques_aliados[0], fortaleza_protegida_hasta)
-            # NUEVO: Contador de vidas
-            if tanques_aliados:
-                # La vida de nuestro tanque la obtenemos del servidor
-                vidas_p1 = tanques_aliados[0].vidas 
-                dibujar_texto(f"Vidas P1: {vidas_p1}", fuente, constantes.BLANCO, 10, 50)
-            
-            # Vidas del jugador remoto
-            for ghost in remote_players.values():
-                vidas_p2 = ghost.vidas
-                dibujar_texto(f"Vidas P2: {vidas_p2}", fuente, constantes.BLANCO, 10, 80)
-            
-            tiempo_transcurrido = (pygame.time.get_ticks() - tiempo_inicio_partida) // 1000
-            minutos = tiempo_transcurrido // 60
-            segundos = tiempo_transcurrido % 60
-            texto_tiempo = f"{minutos:02}:{segundos:02}"
-            dibujar_texto(texto_tiempo, fuente, constantes.BLANCO, constantes.ANCHO_VENTANA / 2 - 40, 10)
-            
+            vidas_p1 = tanques_aliados[0].vidas 
+            dibujar_texto(f"Vidas P1: {vidas_p1}", fuente, constantes.BLANCO, 10, 50)
+        
+        for ghost in remote_players.values():
+            vidas_p2 = ghost.vidas
+            dibujar_texto(f"Vidas P2: {vidas_p2}", fuente, constantes.BLANCO, 10, 80)
+        
+        tiempo_transcurrido = (pygame.time.get_ticks() - tiempo_inicio_partida) // 1000
+        minutos, segundos = divmod(tiempo_transcurrido, 60)
+        texto_tiempo = f"{minutos:02}:{segundos:02}"
+        dibujar_texto(texto_tiempo, fuente, constantes.BLANCO, constantes.ANCHO_VENTANA / 2 - 40, 10)
+        
+        if jugadores_seleccionados == 1:
             total_enemigos_restantes = len(tanques_enemigos) + len(mundo.tanques_restantes)
-            aliados_vivos = sum(1 for t in tanques_aliados if t.vivo)
-            dibujar_texto(f"Enemigos Restantes: {total_enemigos_restantes}", fuente, constantes.ROJO, constantes.ANCHO_VENTANA / 2 - 150, 40)
-            dibujar_texto(f"Aliados Restantes: {aliados_vivos}", fuente, constantes.VERDE, constantes.ANCHO_VENTANA / 2 - 150, 70)
+            dibujar_texto(f"Oleada: {oleada_actual}", fuente, constantes.BLANCO, constantes.ANCHO_VENTANA - 180, 20)
+        else:
+            total_enemigos_restantes = len(remote_enemies)
+        
+        aliados_vivos = sum(1 for t in tanques_aliados if t.vivo) + sum(1 for g in remote_players.values() if g.energia > 0)
+        dibujar_texto(f"Enemigos Restantes: {total_enemigos_restantes}", fuente, constantes.ROJO, constantes.ANCHO_VENTANA / 2 - 150, 40)
+        dibujar_texto(f"Aliados Restantes: {aliados_vivos}", fuente, constantes.VERDE, constantes.ANCHO_VENTANA / 2 - 150, 70)
 
-        # --- LÓGICA DE FIN DE PARTIDA ---
+        # --- LÓGICA DE FIN DE PARTIDA (COMÚN) ---
         aliados_vivos_count = sum(1 for t in tanques_aliados if t.vivo)
+        if jugadores_seleccionados > 1:
+            aliados_vivos_count += sum(1 for g in remote_players.values() if g.energia > 0)
+
         if fortaleza.energia <= 0 or aliados_vivos_count == 0:
-            jugador1_listo = False
-            jugador2_listo = False
             game_state = "GAME_OVER"
 
-        if not tanques_enemigos and not mundo.tanques_restantes:
-            jugador1_listo = False
-            jugador2_listo = False
+        condicion_victoria = False
+        if jugadores_seleccionados == 1:
+            if not tanques_enemigos and not mundo.tanques_restantes:
+                condicion_victoria = True
+        else: 
+            # El servidor debería enviar un mensaje de "victoria"
+            # Por ahora, podemos simularlo si no hay enemigos remotos
+            pass
+
+        if condicion_victoria:
             game_state = "VICTORIA"
-    
+            
     elif game_state == "GAME_OVER":
         pantalla.fill(constantes.ROJO_OSCURO)
         dibujar_texto("Game Over", fuente_titulo, constantes.BLANCO, constantes.ANCHO_VENTANA/4, constantes.ALTO_VENTANA/4)
