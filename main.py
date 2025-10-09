@@ -17,6 +17,8 @@ pygame.init()
 game_state = "MENU_PRINCIPAL" # "MENU_PRINCIPAL", "LOBBY", "EN_JUEGO", "GAME_OVER", "VICTORIA"
 partidas_disponibles = {} # NUEVO: para guardar la lista de partidas del servidor
 mi_partida_actual = {} # NUEVO: para guardar la info de la partida a la que me uní
+remote_players = {}
+remote_enemies = {} 
 botones_partidas = []
 # NUEVO: Variables para el lobby y multijugador local simulado
 info_partida = {
@@ -31,8 +33,6 @@ jugador1_listo = False
 jugador2_listo = False
 
 net = NetworkManager("ws://172.24.82.196:8000/ws")
-
-remote_players = {}
 
 pantalla = pygame.display.set_mode((constantes.ANCHO_VENTANA, constantes.ALTO_VENTANA))
 pygame.display.set_caption("Tank-Atackk")
@@ -207,11 +207,11 @@ def iniciar_partida(dificultad, num_jugadores):
              muros_originales[i] = obs[0].copy() # Guardamos la imagen original del ladrillo
 
     mundo.crear_grid_navegacion()
-    for enemigo in mundo.lista_enemigos:
+    """for enemigo in mundo.lista_enemigos:
         enemigo.animacion_muerte = animacion_muerte
         enemigo.cañon = Weapon(imagen_cañon, imagen_balas)
         tanques_enemigos.append(enemigo)
-        tanques.append(enemigo)
+        tanques.append(enemigo)"""
     
     # Crear items
     for item in mundo.lista_items:
@@ -640,9 +640,38 @@ while run:
                                 ghost.rotate = p_data.get("rot", 0)
                                 tanques_aliados[0].energia = p_data.get("hp", 90)
                                 ghost.vidas = p_data.get("vidas", 3)
+                    
+                    # NUEVO: Actualizar enemigos desde el servidor
+                    enemigos_actuales = state.get("enemies", [])
+                    ids_enemigos_en_servidor = {e["id"] for e in enemigos_actuales}
+
+                    # Crear/actualizar enemigos que llegan del servidor
+                    for enemy_data in enemigos_actuales:
+                        eid = enemy_data["id"]
+                        if eid not in remote_enemies:
+                            # Creamos un "fantasma" de enemigo
+                            tipo = enemy_data["tipo"]
+                            ghost_enemy = Tanque(enemy_data["x"], enemy_data["y"], animaciones_enemigos[tipo-1], 100, tipo, 0, 0)
+                            remote_enemies[eid] = ghost_enemy
+                        else:
+                            ghost_enemy = remote_enemies[eid]
+                        
+                        ghost_enemy.target_pos = (enemy_data["x"], enemy_data["y"])
+                        ghost_enemy.last_pos = ghost_enemy.forma.center
+                        ghost_enemy.last_update_time = pygame.time.get_ticks()
+                        ghost_enemy.rotate = enemy_data.get("rot", 0)
+                        ghost_enemy.energia = enemy_data.get("hp", 100)
+                        ghost_enemy.update() # Para que se anime el sprite
+
+                    # Limpiar enemigos que ya no existen en el servidor
+                    for eid in list(remote_enemies.keys()):
+                        if eid not in ids_enemigos_en_servidor:
+                            del remote_enemies[eid]
                                 
                     fortaleza.energia = state.get("fortress_hp", fortaleza.energia)
 
+            input_seq += 1
+            net.send_input(input_seq, pressed)
 
             # ESTA ES LA LÍNEA QUE TE PEDÍ AÑADIR (2.B)
             # Corrección de colisión local contra enemigos y aliados
@@ -654,6 +683,8 @@ while run:
         # ==============================================================
         # EL RESTO DE LA LÓGICA ES COMÚN PARA AMBOS MODOS DE JUEGO
         # ==============================================================
+        for ghost in remote_players.values(): ghost.interpolate_position()
+        for ghost_enemy in remote_enemies.values(): ghost_enemy.interpolate_position()
         
         # El cálculo de la cámara va aquí, DESPUÉS de que el jugador tiene su posición final
         posicion_pantalla = [0, 0]
@@ -766,22 +797,23 @@ while run:
                 if bala:
                     grupo_balas.add(bala)
             
-            # Actualizar balas de los jugadores
-            for bala in grupo_balas:
-                daño, posicion_daño = bala.update_original(tanques_enemigos, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if daño:
-                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(daño), fuente, constantes.ROJO)
+            # Actualizar balas de los jugadores (golpean enemigos)
+            for bala in list(grupo_balas):
+                enemigo_golpeado = bala.update(tanques_enemigos, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
+                if enemigo_golpeado:
+                    # El daño a enemigos sigue siendo local por ahora
+                    enemigo_golpeado.energia -= bala.daño
+                    posicion_daño = enemigo_golpeado.forma.center
+                    texto_daño = DamageText(posicion_daño[0], posicion_daño[1], str(bala.daño), fuente, constantes.ROJO)
                     grupo_textos_daño.add(texto_daño)
-            
-            # Actualizar balas enemigas
-            for bala_enemiga in list(grupo_balas_enemigas): # Usamos list() por si la bala se elimina
-                # Primero, revisamos si la bala golpeó a un jugador
+
+            # Actualizar balas enemigas (golpean jugadores y fortaleza)
+            for bala_enemiga in list(grupo_balas_enemigas):
+                # Revisamos si la bala golpeó a un jugador
                 jugador_golpeado = bala_enemiga.update(tanques_aliados, mundo.obstaculos_tiles, tiempo_actual < fortaleza_protegida_hasta)
-                if jugador_golpeado:
-                    print(f"INFO: Jugador {jugador_golpeado.id_red} fue golpeado. Reportando al servidor.")
+                if jugador_golpeado and jugador_golpeado.id_red:
                     net.reportar_daño(jugador_golpeado.id_red, bala_enemiga.daño)
-                    # No necesitamos hacer nada más, la bala ya se eliminó dentro de update()
-                    continue # Pasamos a la siguiente bala
+                    continue # La bala ya se destruyó, pasamos a la siguiente
 
                 # Si no golpeó a un jugador, revisamos si golpeó la fortaleza
                 if fortaleza.rect.colliderect(bala_enemiga.rect):
@@ -869,6 +901,9 @@ while run:
 
             for ghost in remote_players.values():
                 ghost.dibujar(pantalla, posicion_pantalla)
+            
+            for ghost_enemy in remote_enemies.values():
+                ghost_enemy.dibujar(pantalla, posicion_pantalla)
             
             for bala in grupo_balas: bala.dibujar(pantalla, posicion_pantalla)
             for bala_enemiga in grupo_balas_enemigas: bala_enemiga.dibujar(pantalla, posicion_pantalla)
@@ -1032,13 +1067,19 @@ while run:
                         rect = obs[1]
                         lista_obstaculos.append([rect.x, rect.y, rect.width, rect.height])
 
-                    # 4. Llamar a la función con TODOS los argumentos necesarios
+                    # NUEVO: Extraer la "receta" de enemigos para el servidor
+                    lista_enemigos_del_nivel = mundo_temporal.tanques_restantes
+                    puntos_spawn_enemigos = mundo_temporal.posiciones_spawn_enemigos
+
+                    # Enviar todo al servidor
                     net.crear_partida(
                         f"Partida de {random.randint(100,999)}", 
                         dificultad_seleccionada, 
                         spawn1_coords, 
                         spawn2_coords, 
-                        lista_obstaculos
+                        lista_obstaculos,
+                        lista_enemigos_del_nivel, # NUEVO
+                        puntos_spawn_enemigos    # NUEVO
                     )
                     # --- FIN DE LA CORRECCIÓN ---
                 elif boton_unirse_partida.collidepoint(pos_mouse):

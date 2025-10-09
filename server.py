@@ -4,6 +4,8 @@ import asyncio
 import json
 import uuid
 import time
+import random
+import math
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import uvicorn
 import pygame
@@ -19,32 +21,36 @@ partidas = {}    # Guarda la información de las partidas creadas {room_id: room
 
 # --- Clases para representar el estado del juego ---
 class PlayerState:
-    def __init__(self, player_id, x_inicial, y_inicial):
-        self.id = player_id
-        self.x = x_inicial
-        self.y = y_inicial
-        self.spawn_x = x_inicial # Guardamos el spawn para reaparecer
-        self.spawn_y = y_inicial
-        self.hp = 90
-        self.vidas = 3
-        self.rot = 0 # NUEVO: Para guardar la rotación
+    def __init__(self, player_id, x, y):
+        self.id, self.x, self.y = player_id, x, y
+        self.spawn_x, self.spawn_y = x, y
+        self.hp, self.vidas, self.rot = 90, 3, 0
         self.inputs = []
-        
+
+class EnemyState:
+    def __init__(self, id, tipo, x, y):
+        self.id, self.tipo, self.x, self.y = id, tipo, x, y
+        stats = constantes.TANQUE_STATS[tipo]
+        self.hp, self.rot = stats["vida"], 90
+        self.speed = stats["velocidad"]
+
 class GameState:
     def __init__(self, partida_info):
         self.id = partida_info["id"]
-        self.estado = "en_juego"
         self.players = {}
-        self.fortress_hp = 500 
+        self.enemies = {}
+        self.fortress_hp = 200
         self.obstaculos = [pygame.Rect(o[0], o[1], o[2], o[3]) for o in partida_info["obstaculos"]]
-        # Inicializar jugadores en el estado
+        self.enemy_spawn_list = partida_info["lista_enemigos"]
+        self.enemy_spawn_points = partida_info["spawns_enemigos"]
+        
         if partida_info.get("host"):
-            # MODIFICADO: Usar las posiciones de spawn del mapa
             px1, py1 = partida_info["spawn_p1"]
             self.players[partida_info["host"]] = PlayerState(partida_info["host"], px1, py1)
         if partida_info.get("cliente"):
             px2, py2 = partida_info["spawn_p2"]
             self.players[partida_info["cliente"]] = PlayerState(partida_info["cliente"], px2, py2)
+
 
 # --- Funciones de Notificación ---
 async def notificar_a_jugador(player_id, mensaje):
@@ -79,18 +85,67 @@ async def game_loop():
     while True:
         t0 = time.time()
         for id_partida, partida in list(partidas.items()):
-            if partida.get("estado") == "en_juego":
+            if partida.get("estado") == "en_juego" and "game_state" in partida:
                 game = partida["game_state"]
-                speed = 4
-                player_size = (int(constantes.ANCHO_TANQUE * constantes.ESCALA_TANQUE_ANCHO), int(constantes.ALTO_TANQUE * constantes.ESCALA_TANQUE_ALTO))
-                todos_los_rects_jugadores = [pygame.Rect(0, 0, *player_size, center=(p.x, p.y)) for p in game.players.values()]
                 
-                for i, player in enumerate(game.players.values()):
-                    player_rect_actual = todos_los_rects_jugadores[i]
+                # --- 1. Spawnear Nuevos Enemigos ---
+                if len(game.enemies) < 4 and game.enemy_spawn_list:
+                    tipo_enemigo = game.enemy_spawn_list.pop(0)
+                    if game.enemy_spawn_points:
+                        spawn_point = random.choice(game.enemy_spawn_points)
+                        x = spawn_point[0] * constantes.TAMAÑO_REJILLA + 16
+                        y = spawn_point[1] * constantes.TAMAÑO_REJILLA + 16
+                        enemy_id = str(uuid.uuid4())
+                        game.enemies[enemy_id] = EnemyState(enemy_id, tipo_enemigo, x, y)
+
+                # --- 2. Actualizar IA y Movimiento de Enemigos ---
+                player_size = (26, 26) # Hitbox aproximada de los tanques
+                all_enemy_rects = {eid: pygame.Rect(0,0, *player_size, center=(e.x, e.y)) for eid, e in game.enemies.items()}
+
+                for enemy in game.enemies.values():
+                    if not game.players: continue # No mover si no hay jugadores
+
+                    # A. Encontrar objetivo (jugador más cercano)
+                    closest_player = min(game.players.values(), key=lambda p: math.hypot(p.x - enemy.x, p.y - enemy.y))
+                    
+                    # B. Calcular dirección del movimiento
+                    dx, dy = closest_player.x - enemy.x, closest_player.y - enemy.y
+                    dist = math.hypot(dx, dy)
+                    mov_x, mov_y = 0, 0
+                    if dist > player_size[0]: # Moverse solo si no está muy cerca
+                        mov_x = (dx / dist) * enemy.speed
+                        mov_y = (dy / dist) * enemy.speed
+                    
+                    # C. Comprobar colisiones del enemigo (contra obstáculos y otros tanques)
+                    original_ex, original_ey = enemy.x, enemy.y
+                    enemy_rect = all_enemy_rects[enemy.id]
+
+                    # Mover y comprobar en X
+                    enemy.x += mov_x
+                    enemy_rect.centerx = enemy.x
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
+                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy.id) or \
+                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
+                        enemy.x = original_ex
+
+                    # Mover y comprobar en Y
+                    enemy.y += mov_y
+                    enemy_rect.centery = enemy.y
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
+                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy.id) or \
+                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
+                        enemy.y = original_ey
+                
+                # --- 3. Mover Jugadores y Comprobar Colisiones ---
+                all_player_rects = {pid: pygame.Rect(0,0, *player_size, center=(p.x, p.y)) for pid, p in game.players.items()}
+                all_enemy_rects_list = list(all_enemy_rects.values())
+
+                for player in game.players.values():
+                    player_rect_actual = all_player_rects[player.id]
+                    speed = 4
                     
                     while player.inputs:
                         keys = player.inputs.pop(0)
-                        
                         original_x, original_y = player.x, player.y
 
                         # Mover en X
@@ -98,9 +153,10 @@ async def game_loop():
                         if keys.get("right"): player.x += speed; player.rot = 0
                         
                         player_rect_actual.centerx = player.x
-                        # Comprobar colisión en X con obstáculos Y OTROS JUGADORES
+                        # Comprobar colisión en X (obstáculos, otros jugadores, enemigos)
                         if player_rect_actual.collidelist(game.obstaculos) != -1 or \
-                           any(player_rect_actual.colliderect(r) for j, r in enumerate(todos_los_rects_jugadores) if i != j):
+                           any(player_rect_actual.colliderect(r) for pid, r in all_player_rects.items() if pid != player.id) or \
+                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.x = original_x
 
                         # Mover en Y
@@ -108,25 +164,31 @@ async def game_loop():
                         if keys.get("down"): player.y += speed; player.rot = 90
 
                         player_rect_actual.centery = player.y
-                        # Comprobar colisión en Y con obstáculos Y OTROS JUGADORES
+                        # Comprobar colisión en Y (obstáculos, otros jugadores, enemigos)
                         if player_rect_actual.collidelist(game.obstaculos) != -1 or \
-                           any(player_rect_actual.colliderect(r) for j, r in enumerate(todos_los_rects_jugadores) if i != j):
+                           any(player_rect_actual.colliderect(r) for pid, r in all_player_rects.items() if pid != player.id) or \
+                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.y = original_y
-
+                
+                # --- 4. Lógica de Muerte y Reaparición (Respawn) ---
                 for player in game.players.values():
                     if player.hp <= 0 and player.vidas > 0:
                         player.vidas -= 1
                         if player.vidas > 0:
                             player.hp = 90
-                            player.x, player.y = player.spawn_x, player.spawn_y # Respawn
+                            player.x, player.y = player.spawn_x, player.spawn_y # Reaparecer
                         else:
-                            # Lógica para cuando un jugador es eliminado permanentemente
-                            pass
-                        
-                # Enviar el estado actualizado (snapshot)
+                            player.hp = 0 # Marcar como permanentemente muerto
+                            # Aquí podrías añadir lógica para eliminar al jugador del juego si quieres
+
+                # --- 5. Enviar Snapshot Completo a los Clientes ---
                 snapshot = {
                     "type": "snapshot",
-                    "state": { "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot} for p in game.players.values()] }
+                    "state": { 
+                        "players": [{"id": p.id, "x": p.x, "y": p.y, "rot": p.rot, "hp": p.hp, "vidas": p.vidas} for p in game.players.values()],
+                        "enemies": [{"id": e.id, "tipo": e.tipo, "x": e.x, "y": e.y, "rot": e.rot, "hp": e.hp} for e in game.enemies.values()],
+                        "fortress_hp": game.fortress_hp
+                    }
                 }
                 await notificar_a_partida(id_partida, snapshot)
                 

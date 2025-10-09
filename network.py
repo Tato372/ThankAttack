@@ -74,14 +74,16 @@ class NetworkManager:
     def join(self, name="Player"):
         self.send_q.put({"type":"join","name": name})
     
-    def crear_partida(self, nombre, dificultad, spawn_p1, spawn_p2, obstaculos):
+    def crear_partida(self, nombre, dificultad, spawn_p1, spawn_p2, obstaculos, lista_enemigos, spawns_enemigos):
         self.send_q.put({
             "type": "crear_partida", 
             "nombre": nombre, 
             "dificultad": dificultad,
             "spawn_p1": spawn_p1,
             "spawn_p2": spawn_p2,
-            "obstaculos": obstaculos # NUEVO
+            "obstaculos": obstaculos,
+            "lista_enemigos": lista_enemigos, # NUEVO
+            "spawns_enemigos": spawns_enemigos # NUEVO
         })
     
     def reportar_daño(self, objetivo, daño, es_fortaleza=False):

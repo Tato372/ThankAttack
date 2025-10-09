@@ -69,9 +69,19 @@ class Bullet(pygame.sprite.Sprite):
         self.rect.x += self.delta_x
         self.rect.y += self.delta_y
 
+        # Verificar si la bala está fuera del mapa
+        if not (0 <= self.rect.centerx <= constantes.MAPA_ANCHO and 0 <= self.rect.centery <= constantes.MAPA_ALTO):
+            self.kill()
+            return None
+
         # Verificar colisión con tanques objetivo
         for tanque in tanques_objetivo:
             if tanque.vivo and tanque.forma.colliderect(self.rect):
+                # Ignorar el escudo del tanque si lo tiene
+                if tanque.escudo_activo:
+                    self.kill()
+                    return None # La bala choca pero no hace daño ni devuelve el tanque
+                
                 self.kill()
                 # Devolvemos el tanque que fue golpeado
                 return tanque
@@ -79,7 +89,7 @@ class Bullet(pygame.sprite.Sprite):
         # Verificar colisión con obstáculos
         for obstaculo in obstaculos_tiles:
             if obstaculo[1].colliderect(self.rect):
-                if fortaleza_protegida and len(obstaculo) > 5 and obstaculo[5]: # es muro de fortaleza
+                if fortaleza_protegida and len(obstaculo) > 5 and obstaculo[5]:
                     self.kill()
                     return None
                 if obstaculo[4] > 0: # vida del obstáculo
