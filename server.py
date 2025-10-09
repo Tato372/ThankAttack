@@ -103,61 +103,69 @@ async def game_loop():
                 all_player_rects = {pid: pygame.Rect(0,0, *player_size, center=(p.x, p.y)) for pid, p in game.players.items()}
                 all_enemy_rects = {eid: pygame.Rect(0,0, *player_size, center=(e.x, e.y)) for eid, e in game.enemies.items()}
 
-                # --- 3. Actualizar IA y Movimiento de Enemigos ---
+                # --- 3. Actualizar IA y Movimiento de Enemigos (Lógica Mejorada) ---
                 for enemy_id, enemy in game.enemies.items():
                     if not game.players: continue
-
+                    
+                    enemy_rect = all_enemy_rects[enemy_id]
                     closest_player = min(game.players.values(), key=lambda p: math.hypot(p.x - enemy.x, p.y - enemy.y))
-                    dx, dy = closest_player.x - enemy.x, closest_player.y - enemy.y
-                    dist = math.hypot(dx, dy)
-                    mov_x, mov_y = 0, 0
-                    if dist > player_size[0]:
-                        mov_x = (dx / dist) * enemy.speed
-                        mov_y = (dy / dist) * enemy.speed
+                    
+                    dx_ideal, dy_ideal = 0, 0
+                    dist_to_player = math.hypot(closest_player.x - enemy.x, closest_player.y - enemy.y)
+                    
+                    if dist_to_player > player_size[0]:
+                        if abs(closest_player.x - enemy.x) > abs(closest_player.y - enemy.y):
+                            dx_ideal = enemy.speed if closest_player.x > enemy.x else -enemy.speed
+                        else:
+                            dy_ideal = enemy.speed if closest_player.y > enemy.y else -enemy.speed
+                    
+                    if dx_ideal > 0: enemy.rot = 0
+                    elif dx_ideal < 0: enemy.rot = 180
+                    elif dy_ideal > 0: enemy.rot = 90
+                    elif dy_ideal < 0: enemy.rot = 270
+
+                    sensor = enemy_rect.move(dx_ideal, dy_ideal)
+                    mov_x, mov_y = dx_ideal, dy_ideal
+
+                    if sensor.collidelist(game.obstaculos) != -1 or any(sensor.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id):
+                        if dx_ideal != 0: mov_x, mov_y = 0, enemy.speed if closest_player.y > enemy.y else -enemy.speed
+                        else: mov_x, mov_y = enemy.speed if closest_player.x > enemy.x else -enemy.speed
                     
                     original_ex, original_ey = enemy.x, enemy.y
-                    enemy_rect = all_enemy_rects[enemy_id]
-
+                    
                     enemy.x += mov_x
                     enemy_rect.centerx = enemy.x
-                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
-                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or \
-                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or enemy_rect.collidelist(list(all_player_rects.values())) != -1:
                         enemy.x = original_ex
 
                     enemy.y += mov_y
                     enemy_rect.centery = enemy.y
-                    if enemy_rect.collidelist(game.obstaculos) != -1 or \
-                       any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or \
-                       any(player_rect.colliderect(enemy_rect) for player_rect in all_player_rects.values()):
+                    if enemy_rect.collidelist(game.obstaculos) != -1 or any(enemy_rect.colliderect(r) for eid, r in all_enemy_rects.items() if eid != enemy_id) or enemy_rect.collidelist(list(all_player_rects.values())) != -1:
                         enemy.y = original_ey
                 
                 # --- 4. Mover Jugadores y Comprobar Colisiones ---
                 all_enemy_rects_list = list(all_enemy_rects.values())
                 for player in game.players.values():
+                    otros_jugadores_rects = [r for pid, r in all_player_rects.items() if pid != player.id]
                     player_rect_actual = all_player_rects[player.id]
-                    speed = 4
                     
                     while player.inputs:
                         keys = player.inputs.pop(0)
                         original_x, original_y = player.x, player.y
+                        speed = 4
 
                         if keys.get("left"): player.x -= speed; player.rot = 180
                         if keys.get("right"): player.x += speed; player.rot = 0
                         
                         player_rect_actual.centerx = player.x
-                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
-                           any(player_rect_actual.colliderect(r) for pid, r in all_player_rects.items() if pid != player.id) or \
-                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or player_rect_actual.collidelist(otros_jugadores_rects) != -1 or player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.x = original_x
 
                         if keys.get("up"): player.y -= speed; player.rot = 270
                         if keys.get("down"): player.y += speed; player.rot = 90
-
+                        
                         player_rect_actual.centery = player.y
-                        if player_rect_actual.collidelist(game.obstaculos) != -1 or \
-                           any(player_rect_actual.colliderect(r) for pid, r in all_player_rects.items() if pid != player.id) or \
-                           player_rect_actual.collidelist(all_enemy_rects_list) != -1:
+                        if player_rect_actual.collidelist(game.obstaculos) != -1 or player_rect_actual.collidelist(otros_jugadores_rects) != -1 or player_rect_actual.collidelist(all_enemy_rects_list) != -1:
                             player.y = original_y
                 
                 # --- 5. Lógica de Muerte y Reaparición (Respawn) ---

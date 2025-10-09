@@ -141,29 +141,24 @@ def resetear_mundo():
 
 def iniciar_partida(dificultad, num_jugadores):
     """Crea y devuelve todos los objetos necesarios para una nueva partida."""
-    # Limpiar listas y grupos de sprites
-    tanques = []
-    tanques_enemigos = []
-    tanques_aliados = []
-    grupo_balas = pygame.sprite.Group()
-    grupo_balas_enemigas = pygame.sprite.Group()
-    grupo_textos_daño = pygame.sprite.Group()
-    grupo_items = pygame.sprite.Group()
+    # Creamos listas y grupos nuevos
+    tanques, tanques_enemigos, tanques_aliados = [], [], []
+    grupo_balas, grupo_balas_enemigas = pygame.sprite.Group(), pygame.sprite.Group()
+    grupo_textos_daño, grupo_items = pygame.sprite.Group(), pygame.sprite.Group()
 
     mundo = Mundo()
+    # PASO 1: TODOS los modos cargan el mapa visual y los obstáculos.
+    mundo.cargar_mapa_visual(data_suelo, data_objetos, lista_tiles)
     
-    # --- CORRECCIÓN CLAVE ---
-    # Solo procesamos el mundo y creamos enemigos localmente si es 1 JUGADOR
+    # PASO 2: SOLO el modo 1 Jugador genera enemigos localmente.
     if num_jugadores == 1:
-        mundo.process_data(data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad, num_jugadores)
-        # Añadimos los enemigos locales a la lista de tanques para colisiones
+        mundo.generar_enemigos(dificultad, num_jugadores, animaciones_enemigos)
         for enemigo in mundo.lista_enemigos:
             tanques.append(enemigo)
             tanques_enemigos.append(enemigo)
     
-    # El cliente SIEMPRE crea su propio tanque
-    tanques_aliados = []
-    px1, py1 = mundo.posicion_spawn_jugador if num_jugadores == 1 else (5, 5) # Coords temporales para MP
+    # El resto de la lógica es para crear el jugador y la fortaleza
+    px1, py1 = mundo.posicion_spawn_jugador if mundo.posicion_spawn_jugador else (5,5)
     tanque_jugador1 = Tanque(
         px1 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
         py1 * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
@@ -175,15 +170,14 @@ def iniciar_partida(dificultad, num_jugadores):
     
     cañon_jugador = Weapon(imagen_cañon, imagen_balas)
 
-    # La fortaleza se crea siempre, pero sus datos vendrán del servidor en MP
-    fx, fy = mundo.posicion_fortaleza if num_jugadores == 1 else (25, 45) # Coords temporales
+    fx, fy = mundo.posicion_fortaleza if mundo.posicion_fortaleza else (25, 45)
     fortaleza = Fortaleza(
         fx * constantes.TAMAÑO_REJILLA,
         fy * constantes.TAMAÑO_REJILLA,
         imagen_fortaleza
     )
     
-    muros_originales = {} # Esta lógica puede necesitar revisión para MP, pero por ahora está bien
+    muros_originales = {} 
 
     return mundo, tanques_aliados, fortaleza, tanques, tanques_enemigos, grupo_balas, grupo_balas_enemigas, grupo_textos_daño, grupo_items, cañon_jugador, muros_originales
 

@@ -17,173 +17,104 @@ class Mundo():
         self.map_tiles = []
         self.obstaculos_tiles = []
         self.arbustos = []
-        self.lista_items = []
         self.lista_enemigos = []
-        self.posicion_tile_1 = random.choice(suelo)
-        self.posicion_tile_2 = random.choice(suelo)
-        self.posicion_tile_3 = random.choice(suelo)
         self.posiciones_spawn_enemigos = []
         self.posicion_spawn_jugador = None
         self.posicion_spawn_jugador2 = None
         self.posicion_fortaleza = None
-        self.tiles_libres = []
+        self.tanques_restantes = []
 
-    def crear_grid_navegacion(self):
-        """Crea una rejilla simple (0=libre, 1=muro) para el pathfinding,
-        calculando de forma precisa el área que ocupa cada obstáculo."""
-        self.grid_navegacion = [[0 for _ in range(constantes.COLUMNAS)] for _ in range(constantes.FILAS)]
-        
-        for obstaculo in self.obstaculos_tiles:
-            rect_obstaculo = obstaculo[1]
-            start_x = rect_obstaculo.left // constantes.TAMAÑO_REJILLA
-            end_x = (rect_obstaculo.right - 1) // constantes.TAMAÑO_REJILLA
-            start_y = rect_obstaculo.top // constantes.TAMAÑO_REJILLA
-            end_y = (rect_obstaculo.bottom - 1) // constantes.TAMAÑO_REJILLA
-
-            for y in range(start_y, end_y + 1):
-                for x in range(start_x, end_x + 1):
-                    if 0 <= x < constantes.COLUMNAS and 0 <= y < constantes.FILAS:
-                        self.grid_navegacion[y][x] = 1
-                        
-    def generar_enemigos(self, dificultad, num_jugadores, animaciones_enemigos):
-        """Prepara la lista de enemigos a generar según dificultad y jugadores, y spawnea los primeros."""
-        # 1️⃣ Obtener configuración según dificultad y número de jugadores
-        config = constantes.CONFIG_TANQUES[num_jugadores][dificultad]
-
-        # 2️⃣ Crear lista de tipos de tanques que se deben generar (ej: [1,1,1,2,3,3,4,5,...])
-        lista_tanques = []
-        for tipo_str, cantidad in config.items():
-            tipo = int(tipo_str)  # las claves vienen como strings
-            lista_tanques.extend([tipo] * cantidad)
-
-        random.shuffle(lista_tanques)  # para que no salgan siempre en el mismo orden
-
-        # Guardamos la lista de tanques pendientes para ir sacándolos en oleadas
-        self.tanques_restantes = lista_tanques
-        self.tanques_en_pantalla = []
-
-        # 3️⃣ Spawnear los primeros 4 tanques
-        self.spawn_enemigos(animaciones_enemigos, cantidad=4)
-
-    def spawn_enemigos(self, animaciones_enemigos, cantidad=4):
-        """Genera enemigos usando posiciones de spawn únicas para cada oleada."""
-        nuevos_tanques = []
-        # Crea una copia barajada de los puntos de spawn para no repetir en esta oleada
-        puntos_disponibles = random.sample(self.posiciones_spawn_enemigos, len(self.posiciones_spawn_enemigos))
-
-        for _ in range(min(cantidad, len(self.tanques_restantes))):
-            # Si ya no quedan puntos de spawn únicos para esta oleada, nos detenemos
-            if not puntos_disponibles:
-                break 
-
-            tipo_tanque = self.tanques_restantes.pop(0)
-            # Extraemos un punto de spawn único de la lista temporal
-            x_tile, y_tile = puntos_disponibles.pop()
-
-            stats = constantes.TANQUE_STATS[tipo_tanque]
-            animaciones = animaciones_enemigos[tipo_tanque - 1]
-
-            tanque = Tanque(
-                x_tile * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                y_tile * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
-                animaciones,
-                stats["vida"],
-                tipo_tanque,
-                stats["velocidad"],
-                stats["cooldown_disparo"]
-            )
-            self.lista_enemigos.append(tanque)
-            nuevos_tanques.append(tanque)
-                
-        return nuevos_tanques
-                
-    def process_data(self, data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad_seleccionada, jugadores_seleccionados):
-        self.nivel_length = len(data_suelo)
+    def cargar_mapa_visual(self, data_suelo, data_objetos, lista_tiles):
+        """NUEVA FUNCIÓN: Carga solo los elementos visuales y de colisión del mapa."""
+        self.map_tiles.clear()
+        self.obstaculos_tiles.clear()
+        self.arbustos.clear()
+        self.posiciones_spawn_enemigos.clear()
 
         # --- Suelo ---
         for y, row in enumerate(data_suelo):
             for x, tile in enumerate(row):
                 image = lista_tiles[tile]
-                rect = image.get_rect()
-                rect.center = (
-                    x * constantes.TAMAÑO_REJILLA + 16,
-                    y * constantes.TAMAÑO_REJILLA + 16
-                )
+                rect = image.get_rect(center=(x * constantes.TAMAÑO_REJILLA + 16, y * constantes.TAMAÑO_REJILLA + 16))
                 self.map_tiles.append([image, rect, rect.centerx, rect.centery])
 
         # --- Objetos, Spawns y Fortaleza ---
-        self.tiles_libres = []
         for y, row in enumerate(data_objetos):
             for x, tile in enumerate(row):
-                if tile == -1:
-                    self.tiles_libres.append((x, y)) # Guardamos los tiles vacíos por si los necesitamos
-                    continue
+                if tile == -1: continue
                 
-                # --- Guardar posiciones de spawn ---
-                if tile == jugador_spawn_tile:
+                if tile == constantes.jugador_spawn_tile:
                     self.posicion_spawn_jugador = (x, y)
-                    continue # No dibujamos un objeto aquí
-                elif tile == jugador2_spawn_tile: # <-- NUEVO
-                    self.posicion_spawn_jugador2 = (x, y) # <-- NUEVO
-                    continue # <-- NUEVO
-                elif tile == enemigo_spawn_tile:
+                    continue
+                elif tile == constantes.jugador2_spawn_tile:
+                    self.posicion_spawn_jugador2 = (x, y)
+                    continue
+                elif tile == constantes.enemigo_spawn_tile:
                     self.posiciones_spawn_enemigos.append((x, y))
                     continue
-                elif tile == fortaleza_tile:
+                elif tile == constantes.fortaleza_tile:
                     self.posicion_fortaleza = (x, y)
-                    # <-- CAMBIO: Identificar los muros de la fortaleza con un valor especial -->
-                    # Creamos un rectángulo que rodea la fortaleza para añadirle muros
-                    fx_tile, fy_tile = self.posicion_fortaleza
-                    # Ejemplo simple: colocar muros de ladrillo alrededor (puedes ajustarlo)
-                    muros_fortaleza_pos = [
-                        (fx_tile-1, fy_tile-1), (fx_tile, fy_tile-1), (fx_tile+1, fy_tile-1),
-                        (fx_tile-1, fy_tile),                       (fx_tile+1, fy_tile),
-                        (fx_tile-1, fy_tile+1), (fx_tile, fy_tile+1), (fx_tile+1, fy_tile+1),
-                    ]
-                    for mx, my in muros_fortaleza_pos:
-                        if 0 <= mx < constantes.COLUMNAS and 0 <= my < constantes.FILAS and data_objetos[my][mx] == -1:
-                            img_muro = lista_tiles[4] # Ladrillo
-                            rect_muro = img_muro.get_rect(center=(mx * constantes.TAMAÑO_REJILLA + 16, my * constantes.TAMAÑO_REJILLA + 16))
-                            # Usamos [img, rect, cx, cy, vida, es_muro_fortaleza]
-                            self.obstaculos_tiles.append([img_muro, rect_muro, rect_muro.centerx, rect_muro.centery, 2, True])
                     continue
                 
-                # --- Procesar objetos normales (ladrillos, metal, etc.) ---
                 image = lista_tiles[tile]
-                rect = image.get_rect()
-                rect.center = (x * constantes.TAMAÑO_REJILLA + 16, y * constantes.TAMAÑO_REJILLA + 16)
+                rect = image.get_rect(center=(x * constantes.TAMAÑO_REJILLA + 16, y * constantes.TAMAÑO_REJILLA + 16))
                 tile_data = [image, rect, rect.centerx, rect.centery]
 
-                if tile in destruibles:
-                    tile_data.append(2)
+                if tile in constantes.destruibles:
+                    tile_data.append(4) # Vida del obstáculo
                     self.obstaculos_tiles.append(tile_data)
-                elif tile in no_destruibles:
+                elif tile in constantes.no_destruibles:
                     tile_data.append(-1)
                     self.obstaculos_tiles.append(tile_data)
-                elif tile in arbustos:
+                elif tile in constantes.arbustos:
                     self.arbustos.append(tile_data)
-        
-        # Generar la lista de enemigos (ya no necesita self.tiles_libres)
-        self.generar_enemigos(
-            dificultad_seleccionada,
-            jugadores_seleccionados,
-            animaciones_enemigos
-        )
     
-    def update(self, posicion_pantalla):
-        for tile in self.map_tiles:
-            tile[2] += posicion_pantalla[0]
-            tile[3] += posicion_pantalla[1]
-            tile[1].center = (tile[2], tile[3])
+    def generar_enemigos(self, dificultad, num_jugadores, animaciones_enemigos):
+        """Prepara la lista de enemigos a generar y spawnea los primeros."""
+        self.lista_enemigos.clear()
+        self.tanques_restantes.clear()
         
-    def dibujar(self, pantalla, posicion_camara):
-        # Usa directamente la posición de la cámara que recibe como argumento
-        cam_x, cam_y = posicion_camara
+        config = constantes.CONFIG_TANQUES[num_jugadores][dificultad]
+        lista_tanques = []
+        for tipo_str, cantidad in config.items():
+            tipo = int(tipo_str)
+            lista_tanques.extend([tipo] * cantidad)
+        random.shuffle(lista_tanques)
+        self.tanques_restantes = lista_tanques
+        
+        # Spawnea los primeros enemigos para el modo 1P
+        self.spawn_enemigos(animaciones_enemigos, cantidad=4)
 
-        # Dibuja los tiles del suelo
+    def spawn_enemigos(self, animaciones_enemigos, cantidad=4):
+        """Genera enemigos para el modo de 1 jugador."""
+        nuevos_tanques = []
+        puntos_disponibles = random.sample(self.posiciones_spawn_enemigos, len(self.posiciones_spawn_enemigos))
+
+        for _ in range(min(cantidad, len(self.tanques_restantes))):
+            if not puntos_disponibles: break 
+
+            tipo_tanque = self.tanques_restantes.pop(0)
+            x_tile, y_tile = puntos_disponibles.pop()
+            stats = constantes.TANQUE_STATS[tipo_tanque]
+            
+            tanque = Tanque(
+                x_tile * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
+                y_tile * constantes.TAMAÑO_REJILLA + (constantes.TAMAÑO_REJILLA / 2),
+                animaciones_enemigos[tipo_tanque - 1],
+                stats["vida"], tipo_tanque, stats["velocidad"], stats["cooldown_disparo"]
+            )
+            self.lista_enemigos.append(tanque)
+            nuevos_tanques.append(tanque)
+        return nuevos_tanques
+                
+    def process_data(self, data_suelo, data_objetos, lista_tiles, imagenes_items, animaciones_enemigos, dificultad_seleccionada, jugadores_seleccionados):
+        """Función original, ahora solo se usa para el modo de 1 jugador."""
+        self.cargar_mapa_visual(data_suelo, data_objetos, lista_tiles)
+        self.generar_enemigos(dificultad_seleccionada, jugadores_seleccionados, animaciones_enemigos)
+
+    def dibujar(self, pantalla, posicion_camara):
+        cam_x, cam_y = posicion_camara
         for tile in self.map_tiles:
             pantalla.blit(tile[0], (tile[1].x - cam_x, tile[1].y - cam_y))
-
-        # Dibuja los obstáculos
         for obstaculo in self.obstaculos_tiles:
             pantalla.blit(obstaculo[0], (obstaculo[1].x - cam_x, obstaculo[1].y - cam_y))
